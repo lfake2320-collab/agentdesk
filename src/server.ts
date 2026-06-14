@@ -87,6 +87,11 @@ function cardOutputSchema<TTool extends string>(
     path: z.string().optional(),
     label: z.string(),
     summary,
+    modelText: z
+      .string()
+      .describe(
+        "Model-readable text result. Mirrors the important tool output so hosts that prioritize structuredContent do not hide it behind the UI card.",
+      ),
     ui: uiCardSchema,
     ...extra,
   };
@@ -117,6 +122,10 @@ function contentText(content: ToolContent[]): string {
     .filter((item): item is { type: "text"; text: string } => item.type === "text")
     .map((item) => item.text)
     .join("\n");
+}
+
+function textBlock(text: string): ToolContent {
+  return { type: "text", text };
 }
 
 function textSummary(content: ToolContent[]): { lines: number; characters: number } {
@@ -341,6 +350,7 @@ function createMcpServer(
         summary: z.object({
           agentsFiles: z.number().int().nonnegative(),
         }),
+        modelText: z.string(),
         ui: uiCardSchema,
       },
       _meta: {
@@ -371,10 +381,9 @@ function createMcpServer(
           ],
         },
       });
-      return {
-        content: [
+      const resultContent: ToolContent[] = [
           {
-            type: "text",
+            type: "text" as const,
             text: JSON.stringify(
               {
                 workspaceId: workspace.id,
@@ -398,7 +407,10 @@ function createMcpServer(
                 },
               ]
             : []),
-        ],
+        ];
+
+      return {
+        content: resultContent,
         structuredContent: {
           tool: "open_workspace",
           resultId: storedResult.id,
@@ -406,6 +418,7 @@ function createMcpServer(
           root: workspace.root,
           label: workspace.root,
           summary,
+          modelText: contentText(resultContent),
           ui: {
             card: "workspace",
             expandable: agentsFiles.length > 0,
@@ -496,6 +509,7 @@ function createMcpServer(
           path: input.path,
           label: input.path,
           summary,
+          modelText: contentText(response.content),
           ui: {
             card: "text",
             expandable: true,
@@ -575,6 +589,7 @@ function createMcpServer(
           path: input.path,
           label: input.path,
           summary,
+          modelText: contentText(response.content),
           ui: {
             card: "write",
             expandable: true,
@@ -645,6 +660,7 @@ function createMcpServer(
       if (response.isError) return response;
 
       const stats = countDiffStats(response.details?.patch ?? response.details?.diff);
+      const diffText = response.details?.patch ?? response.details?.diff ?? "";
       const storedResult = results.put({
         workspaceId,
         tool: "edit_file",
@@ -659,17 +675,17 @@ function createMcpServer(
           patch: response.details?.patch,
         },
       });
+      const editResultText = [
+        `Edited ${input.path} (+${stats.additions} -${stats.removals}). Diff available in the UI as ${storedResult.id}.`,
+        diffText ? `\nUnified diff:\n${diffText}` : "",
+      ].join("");
+      const editContent = [
+        textBlock(editResultText),
+        ...(agentsNotice ? [textBlock(agentsNotice)] : []),
+      ];
 
       return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Edited ${input.path} (+${stats.additions} -${stats.removals}). Diff available in the UI as ${storedResult.id}.`,
-          },
-          ...(agentsNotice
-            ? [{ type: "text" as const, text: agentsNotice }]
-            : []),
-        ],
+        content: editContent,
         structuredContent: {
           tool: "edit_file",
           resultId: storedResult.id,
@@ -678,6 +694,7 @@ function createMcpServer(
           path: input.path,
           label: input.path,
           summary: storedResult.summary,
+          modelText: contentText(editContent),
           ui: {
             card: "file-diff",
             expandable: true,
@@ -763,6 +780,7 @@ function createMcpServer(
           path: input.path,
           label: input.pattern,
           summary,
+          modelText: contentText(response.content),
           ui: {
             card: "search",
             expandable: true,
@@ -845,6 +863,7 @@ function createMcpServer(
           path: input.path,
           label: input.pattern,
           summary,
+          modelText: contentText(response.content),
           ui: {
             card: "search",
             expandable: true,
@@ -917,6 +936,7 @@ function createMcpServer(
           path: input.path,
           label: input.path,
           summary,
+          modelText: contentText(response.content),
           ui: {
             card: "directory",
             expandable: true,
@@ -1004,6 +1024,7 @@ function createMcpServer(
           path: workingDirectory,
           label: input.command,
           summary,
+          modelText: contentText(response.content),
           ui: {
             card: "shell",
             expandable: true,
