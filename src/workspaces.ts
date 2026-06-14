@@ -333,7 +333,7 @@ export function formatAgentsNotice(agentsFiles: LoadedAgentsFile[], workspaceRoo
   return `<project_context>\nProject-specific instructions and guidelines:\n\n${sections.join("\n\n")}\n</project_context>`;
 }
 
-function formatAgentsPath(path: string, workspaceRoot: string | undefined): string {
+export function formatAgentsPath(path: string, workspaceRoot: string | undefined): string {
   if (!workspaceRoot) return path.split(sep).join("/");
 
   const relationship = relative(workspaceRoot, path);

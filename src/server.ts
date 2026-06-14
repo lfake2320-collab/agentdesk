@@ -29,9 +29,9 @@ import {
   createResultStore,
   type ToolResultStore,
 } from "./result-store.js";
-import { formatSkillsNotice } from "./skills.js";
+import { formatPathForPrompt, formatSkillsNotice } from "./skills.js";
 import { createWorkspaceStore } from "./workspace-store.js";
-import { formatAgentsNotice, WorkspaceRegistry } from "./workspaces.js";
+import { formatAgentsNotice, formatAgentsPath, WorkspaceRegistry } from "./workspaces.js";
 
 type Transport = StreamableHTTPServerTransport;
 const WORKSPACE_APP_URI = "ui://devspace/workspace-app.html";
@@ -470,11 +470,6 @@ function createMcpServer(
             managed: z.boolean(),
           })
           .optional(),
-        summary: z.object({
-          agentsFiles: z.number().int().nonnegative(),
-          skills: z.number().int().nonnegative(),
-          skillDiagnostics: z.number().int().nonnegative(),
-        }),
         result: z.string(),
       },
       _meta: {
@@ -522,14 +517,16 @@ function createMcpServer(
               mode: workspace.mode,
               sourceRoot: workspace.sourceRoot,
               worktree: workspace.worktree,
-              agentsFiles: agentsFiles.map((file) => file.path),
+              agentsFiles: agentsFiles.map((file) =>
+                formatAgentsPath(file.path, workspace.root),
+              ),
               skills: workspace.skills
                 .filter((skill) => !skill.disableModelInvocation)
                 .map((skill) => ({
                   name: skill.name,
-                  path: skill.filePath,
+                  description: skill.description,
+                  path: formatPathForPrompt(skill.filePath),
                 })),
-              skillDiagnostics: workspace.skillDiagnostics.length,
               instruction:
                 config.skillsEnabled
                   ? config.autoLoadAgentsMd
@@ -570,7 +567,6 @@ function createMcpServer(
           mode: workspace.mode,
           sourceRoot: workspace.sourceRoot,
           worktree: workspace.worktree,
-          summary,
           result: contentText(resultContent),
         },
       };

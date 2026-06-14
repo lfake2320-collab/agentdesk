@@ -98,7 +98,7 @@ export function markSkillActivated(
   activatedSkillDirs.add(resolve(skill.baseDir));
 }
 
-function formatPathForPrompt(path: string): string {
+export function formatPathForPrompt(path: string): string {
   const home = resolve(homedir());
   const resolvedPath = resolve(path);
 
