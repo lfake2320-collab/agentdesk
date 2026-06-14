@@ -827,7 +827,6 @@ function createMcpServer(
       outputSchema: resultOutputSchema({
         summary: reviewSummaryOutputSchema,
         files: z.array(reviewFileOutputSchema),
-        patch: z.string(),
       }),
       ...toolWidgetDescriptorMeta(config, "review_changes"),
       annotations: { readOnlyHint: true },
@@ -860,7 +859,6 @@ function createMcpServer(
           result: contentText(content),
           summary: review.summary,
           files: review.files,
-          patch: review.patch,
         },
       };
     },
