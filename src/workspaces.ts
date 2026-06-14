@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { access, readFile, stat } from "node:fs/promises";
+import { access, mkdir, readFile, stat } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import type { ServerConfig } from "./config.js";
 import { assertAllowedPath, isPathInsideRoot, resolveAllowedPath } from "./roots.js";
@@ -28,6 +28,8 @@ export class WorkspaceRegistry {
 
   async openWorkspace(path: string): Promise<WorkspaceContext> {
     const root = assertAllowedPath(path, this.config.allowedRoots);
+    await mkdir(root, { recursive: true });
+
     const rootStats = await stat(root);
     if (!rootStats.isDirectory()) {
       throw new Error(`Workspace root must be a directory: ${path}`);

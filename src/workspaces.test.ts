@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -22,6 +22,11 @@ try {
   const { workspace, agentsFiles } = await registry.openWorkspace(root);
 
   assert.match(formatAgentsNotice(agentsFiles) ?? "", /root instructions/);
+
+  const missingWorkspaceRoot = join(root, "missing", "workspace");
+  const missingWorkspace = await registry.openWorkspace(missingWorkspaceRoot);
+  assert.equal(missingWorkspace.workspace.root, missingWorkspaceRoot);
+  assert.equal((await stat(missingWorkspaceRoot)).isDirectory(), true);
 
   const rootAgain = await registry.loadAgentsForDirectory(workspace, root);
   assert.equal(formatAgentsNotice(rootAgain), undefined);
