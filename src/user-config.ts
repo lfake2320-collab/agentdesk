@@ -25,6 +25,7 @@ export interface DevspaceUserConfig {
   pluginPaths?: string[];
   systemTools?: boolean;
   processControl?: boolean;
+  browserTools?: boolean;
 }
 
 export interface DevspaceAuthConfig {

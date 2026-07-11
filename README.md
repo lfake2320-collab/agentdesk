@@ -28,7 +28,8 @@ DevSpace brings a Codex-style coding workflow to ChatGPT. AgentDesk goes further
 - **Personal Skill Packs**: load your own repeatable workflows for Codex repair, Docker debugging, YOLO projects, PyQt apps, papers, and more.
 - **Plugin manifest system**: advertise local capabilities without blindly executing unknown plugin code.
 - **MCP workspace server**: read, edit, search, write, run tests, and inspect real local projects through approved roots.
-- **Safer defaults**: powerful tools are opt-in, process control is off unless explicitly enabled, and destructive actions require confirmation phrases.
+- **Controlled browser automation**: optional isolated Chromium session for opening pages, reading snapshots, clicking, and typing without stealing normal browser cookies by default.
+- **Safer defaults**: powerful tools are opt-in, browser control is opt-in, process control is off unless explicitly enabled, and destructive actions require confirmation phrases.
 
 ## What is new compared with upstream DevSpace?
 
@@ -45,6 +46,7 @@ AgentDesk is based on `Waishnav/devspace`, but focuses on a different user story
 | System diagnostics | No | Yes |
 | Port/process diagnosis | No | Yes |
 | Confirmation-gated process kill | No | Yes, owner-only and opt-in |
+| Controlled browser automation | No | Yes, owner-only and opt-in |
 | Windows-first positioning | Partial | Primary focus |
 
 ## Quick start
@@ -184,6 +186,29 @@ examples/plugins/windows-tools/plugin.json
 ```
 
 Plugin manifests are capability metadata. AgentDesk does not blindly execute arbitrary plugin code from `plugin.json`; actual executable tools must be implemented by a trusted MCP host or adapter.
+
+## Controlled browser automation
+
+AgentDesk can expose browser-control tools when you explicitly enable them:
+
+```powershell
+$env:DEVSPACE_PERMISSION_PROFILE="owner"
+$env:DEVSPACE_BROWSER_TOOLS="1"
+agentdesk serve
+```
+
+This registers:
+
+```text
+browser_start
+browser_navigate
+browser_snapshot
+browser_click
+browser_type
+browser_close
+```
+
+By default AgentDesk launches an isolated Chromium-compatible profile through Chrome DevTools Protocol. It does not silently reuse your normal browser cookies. Set `DEVSPACE_BROWSER_EXECUTABLE` when AgentDesk cannot find Edge or Chrome automatically.
 
 ## Demo script for your README GIF
 

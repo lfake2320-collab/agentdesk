@@ -50,6 +50,12 @@ import {
   proxySummary,
   systemSummary,
 } from "./system-tools.js";
+import {
+  BrowserController,
+  defaultBrowserDebugPort,
+  defaultBrowserProfileDir,
+  formatBrowserSnapshot,
+} from "./browser-tools.js";
 import { formatPermissionProfileForPrompt } from "./permissions.js";
 import { createWorkspaceStore } from "./workspace-store.js";
 import { formatAgentsPath, WorkspaceRegistry } from "./workspaces.js";
@@ -192,13 +198,16 @@ function serverInstructions(config: ServerConfig): string {
   const processControlInstruction = canUseProcessControl(config.permissionProfile, config.processControlEnabled)
     ? "Process termination is available only through the dedicated confirmed process-control tool. Never terminate a process without the exact user-provided confirmation phrase required by the tool. "
     : "";
+  const browserInstruction = config.browserToolsEnabled
+    ? "Browser control tools are available for user-authorized web automation in an isolated local Chromium session. Use them for navigation, page inspection, clicking, and form entry; do not assume access to the user's normal browser cookies unless the user configured that profile deliberately. "
+    : "";
   const showChangesInstruction =
     config.widgets === "changes"
       ? " If the turn successfully modifies files by creating, editing, overwriting, deleting, moving, or applying patches, call show_changes exactly once for that workspace after the final related file change and before your final response so the user can inspect the aggregate diff for that turn. Do not call it after every individual file change; do not skip it because individual file-change tools already returned diffs."
       : "";
 
   if (config.toolMode === "codex") {
-    return `Use DevSpace as a local coding workspace. ${permissionInstruction}${pluginInstruction}${systemInstruction}${processControlInstruction}Call ${toolNames.openWorkspace} once per project folder or worktree and reuse its workspaceId. Use ${toolNames.read} for direct file reads, apply_patch for all file modifications, exec_command for inspection, tests, builds, and other commands, and write_stdin to poll or interact with running processes. Follow instructions returned by ${toolNames.openWorkspace}; read applicable instruction and skill files before working in their scope.${showChangesInstruction}`;
+    return `Use DevSpace as a local coding workspace. ${permissionInstruction}${pluginInstruction}${systemInstruction}${processControlInstruction}${browserInstruction}Call ${toolNames.openWorkspace} once per project folder or worktree and reuse its workspaceId. Use ${toolNames.read} for direct file reads, apply_patch for all file modifications, exec_command for inspection, tests, builds, and other commands, and write_stdin to poll or interact with running processes. Follow instructions returned by ${toolNames.openWorkspace}; read applicable instruction and skill files before working in their scope.${showChangesInstruction}`;
   }
 
   const inspection = config.toolMode !== "full"
@@ -211,7 +220,7 @@ function serverInstructions(config: ServerConfig): string {
 
   const agentsMd = `Follow instructions returned by ${toolNames.openWorkspace}. Before working under a path listed in availableAgentsFiles, use ${toolNames.read} to inspect that instruction file and follow it. `;
 
-  return `Use DevSpace as a local coding workspace. ${permissionInstruction}${pluginInstruction}${systemInstruction}${processControlInstruction}Call ${toolNames.openWorkspace} once per project folder or worktree to obtain a workspaceId. Reuse that same workspaceId for all later file, search, edit, write, show-changes, and shell tools in that folder; do not call ${toolNames.openWorkspace} again unless switching folders/worktrees, changing checkout/worktree mode, the workspaceId is rejected as unknown, or the user explicitly asks to reopen. ${agentsMd}${skills}${inspection}Prefer ${toolNames.edit} for targeted modifications, ${toolNames.write} only for new files or complete rewrites, and ${toolNames.shell} for tests, builds, git inspection, package scripts, and commands that are better executed by the shell. Do not create or modify files with ${toolNames.shell}; avoid shell redirection, heredocs, tee, sed -i, perl -i, node/python/ruby scripts, or any command whose purpose is to write project files.${showChangesInstruction}`;
+  return `Use DevSpace as a local coding workspace. ${permissionInstruction}${pluginInstruction}${systemInstruction}${processControlInstruction}${browserInstruction}Call ${toolNames.openWorkspace} once per project folder or worktree to obtain a workspaceId. Reuse that same workspaceId for all later file, search, edit, write, show-changes, and shell tools in that folder; do not call ${toolNames.openWorkspace} again unless switching folders/worktrees, changing checkout/worktree mode, the workspaceId is rejected as unknown, or the user explicitly asks to reopen. ${agentsMd}${skills}${inspection}Prefer ${toolNames.edit} for targeted modifications, ${toolNames.write} only for new files or complete rewrites, and ${toolNames.shell} for tests, builds, git inspection, package scripts, and commands that are better executed by the shell. Do not create or modify files with ${toolNames.shell}; avoid shell redirection, heredocs, tee, sed -i, perl -i, node/python/ruby scripts, or any command whose purpose is to write project files.${showChangesInstruction}`;
 }
 
 function formatVisibleAgent(agent: {
@@ -589,6 +598,187 @@ function registerSystemDiagnosticTools(
       workspaces.getWorkspace(workspaceId);
       const result = formatSystemDiagnostics(await collectSystemDiagnostics(port));
       logToolCall(config, { tool: "system_doctor", workspaceId, success: true, durationMs: Math.round(performance.now() - startedAt) });
+      return { content: [textBlock(result)], structuredContent: { result } };
+    },
+  );
+}
+
+function registerBrowserControlTools(
+  server: McpServer,
+  config: ServerConfig,
+  workspaces: WorkspaceRegistry,
+): void {
+  const workspaceIdSchema = z.string().describe("Workspace identifier returned by open_workspace. Required to tie browser automation to an authorized AgentDesk session.");
+  const browser = new BrowserController({
+    profileDir: defaultBrowserProfileDir(config.stateDir),
+    port: defaultBrowserDebugPort(),
+  });
+
+  registerAppTool(
+    server,
+    "browser_start",
+    {
+      title: "Start browser",
+      description: "Start an isolated local Chromium browser session for user-authorized web automation. Requires owner profile, DEVSPACE_BROWSER_TOOLS=1, and an open workspaceId.",
+      inputSchema: {
+        workspaceId: workspaceIdSchema,
+        url: z.string().optional().describe("Initial URL. Defaults to about:blank."),
+        headless: z.boolean().optional().describe("Run without a visible browser window. Defaults to false."),
+      },
+      outputSchema: resultOutputSchema(),
+      _meta: {},
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    async ({ workspaceId, url, headless }) => {
+      const startedAt = performance.now();
+      workspaces.getWorkspace(workspaceId);
+      try {
+        const openedUrl = await browser.start(url ?? "about:blank", headless ?? false);
+        const result = `Browser session ready: ${openedUrl}`;
+        logToolCall(config, { tool: "browser_start", workspaceId, success: true, durationMs: Math.round(performance.now() - startedAt) });
+        return { content: [textBlock(result)], structuredContent: { result } };
+      } catch (error) {
+        const result = `Browser start failed: ${error instanceof Error ? error.message : String(error)}`;
+        logToolCall(config, { tool: "browser_start", workspaceId, success: false, durationMs: Math.round(performance.now() - startedAt), error: result });
+        return { content: [textBlock(result)], structuredContent: { result }, isError: true };
+      }
+    },
+  );
+
+  registerAppTool(
+    server,
+    "browser_navigate",
+    {
+      title: "Navigate browser",
+      description: "Navigate the controlled browser session to a URL. Requires owner profile, DEVSPACE_BROWSER_TOOLS=1, and an open workspaceId.",
+      inputSchema: {
+        workspaceId: workspaceIdSchema,
+        url: z.string().min(1).describe("URL to open. https:// is assumed when no scheme is provided."),
+      },
+      outputSchema: resultOutputSchema(),
+      _meta: {},
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    async ({ workspaceId, url }) => {
+      const startedAt = performance.now();
+      workspaces.getWorkspace(workspaceId);
+      try {
+        const openedUrl = await browser.navigate(url);
+        const result = `Navigated browser to: ${openedUrl}`;
+        logToolCall(config, { tool: "browser_navigate", workspaceId, success: true, durationMs: Math.round(performance.now() - startedAt) });
+        return { content: [textBlock(result)], structuredContent: { result } };
+      } catch (error) {
+        const result = `Browser navigation failed: ${error instanceof Error ? error.message : String(error)}`;
+        logToolCall(config, { tool: "browser_navigate", workspaceId, success: false, durationMs: Math.round(performance.now() - startedAt), error: result });
+        return { content: [textBlock(result)], structuredContent: { result }, isError: true };
+      }
+    },
+  );
+
+  registerAppTool(
+    server,
+    "browser_snapshot",
+    {
+      title: "Browser snapshot",
+      description: "Read the controlled browser page URL, title, visible text, and interactive elements. Requires owner profile, DEVSPACE_BROWSER_TOOLS=1, and an open workspaceId.",
+      inputSchema: { workspaceId: workspaceIdSchema },
+      outputSchema: resultOutputSchema(),
+      _meta: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    async ({ workspaceId }) => {
+      const startedAt = performance.now();
+      workspaces.getWorkspace(workspaceId);
+      try {
+        const result = formatBrowserSnapshot(await browser.snapshot());
+        logToolCall(config, { tool: "browser_snapshot", workspaceId, success: true, durationMs: Math.round(performance.now() - startedAt) });
+        return { content: [textBlock(result)], structuredContent: { result } };
+      } catch (error) {
+        const result = `Browser snapshot failed: ${error instanceof Error ? error.message : String(error)}`;
+        logToolCall(config, { tool: "browser_snapshot", workspaceId, success: false, durationMs: Math.round(performance.now() - startedAt), error: result });
+        return { content: [textBlock(result)], structuredContent: { result }, isError: true };
+      }
+    },
+  );
+
+  registerAppTool(
+    server,
+    "browser_click",
+    {
+      title: "Click browser element",
+      description: "Click an element in the controlled browser by CSS selector or visible text. Requires owner profile, DEVSPACE_BROWSER_TOOLS=1, and an open workspaceId.",
+      inputSchema: {
+        workspaceId: workspaceIdSchema,
+        selector: z.string().optional().describe("CSS selector from browser_snapshot, such as #submit or button:nth-of-type(1)."),
+        text: z.string().optional().describe("Visible text fallback when selector is not available."),
+      },
+      outputSchema: resultOutputSchema(),
+      _meta: {},
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    async ({ workspaceId, selector, text }) => {
+      const startedAt = performance.now();
+      workspaces.getWorkspace(workspaceId);
+      try {
+        const result = await browser.click({ selector, text });
+        logToolCall(config, { tool: "browser_click", workspaceId, success: true, durationMs: Math.round(performance.now() - startedAt) });
+        return { content: [textBlock(result)], structuredContent: { result } };
+      } catch (error) {
+        const result = `Browser click failed: ${error instanceof Error ? error.message : String(error)}`;
+        logToolCall(config, { tool: "browser_click", workspaceId, success: false, durationMs: Math.round(performance.now() - startedAt), error: result });
+        return { content: [textBlock(result)], structuredContent: { result }, isError: true };
+      }
+    },
+  );
+
+  registerAppTool(
+    server,
+    "browser_type",
+    {
+      title: "Type into browser",
+      description: "Type text into an input, textarea, or editable element in the controlled browser. Requires owner profile, DEVSPACE_BROWSER_TOOLS=1, and an open workspaceId.",
+      inputSchema: {
+        workspaceId: workspaceIdSchema,
+        selector: z.string().min(1).describe("CSS selector from browser_snapshot."),
+        text: z.string().describe("Text to enter."),
+        clear: z.boolean().optional().describe("Clear existing value before typing. Defaults to false."),
+      },
+      outputSchema: resultOutputSchema(),
+      _meta: {},
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    async ({ workspaceId, selector, text, clear }) => {
+      const startedAt = performance.now();
+      workspaces.getWorkspace(workspaceId);
+      try {
+        const result = await browser.type({ selector, text, clear });
+        logToolCall(config, { tool: "browser_type", workspaceId, success: true, durationMs: Math.round(performance.now() - startedAt) });
+        return { content: [textBlock(result)], structuredContent: { result } };
+      } catch (error) {
+        const result = `Browser type failed: ${error instanceof Error ? error.message : String(error)}`;
+        logToolCall(config, { tool: "browser_type", workspaceId, success: false, durationMs: Math.round(performance.now() - startedAt), error: result });
+        return { content: [textBlock(result)], structuredContent: { result }, isError: true };
+      }
+    },
+  );
+
+  registerAppTool(
+    server,
+    "browser_close",
+    {
+      title: "Close browser",
+      description: "Close the controlled browser session. Requires owner profile, DEVSPACE_BROWSER_TOOLS=1, and an open workspaceId.",
+      inputSchema: { workspaceId: workspaceIdSchema },
+      outputSchema: resultOutputSchema(),
+      _meta: {},
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ workspaceId }) => {
+      const startedAt = performance.now();
+      workspaces.getWorkspace(workspaceId);
+      await browser.close();
+      const result = "Browser session closed.";
+      logToolCall(config, { tool: "browser_close", workspaceId, success: true, durationMs: Math.round(performance.now() - startedAt) });
       return { content: [textBlock(result)], structuredContent: { result } };
     },
   );
@@ -1842,6 +2032,10 @@ function createMcpServer(
 
   if (config.systemToolsEnabled) {
     registerSystemDiagnosticTools(server, config, workspaces);
+  }
+
+  if (config.browserToolsEnabled) {
+    registerBrowserControlTools(server, config, workspaces);
   }
 
   return server;

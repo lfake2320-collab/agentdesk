@@ -6,6 +6,7 @@ import type { OAuthConfig } from "./oauth-provider.js";
 import { devspaceAgentsDir, devspacePluginsDir, devspaceSkillsDir, loadDevspaceFiles } from "./user-config.js";
 import { parsePermissionProfile, type PermissionProfile } from "./permissions.js";
 import { canUseSystemTools } from "./system-tools.js";
+import { canUseBrowserTools } from "./browser-tools.js";
 
 export type ToolMode = "minimal" | "full" | "codex";
 export type WidgetMode = "off" | "changes" | "full";
@@ -33,6 +34,7 @@ export interface ServerConfig {
   devspacePluginsDir: string;
   systemToolsEnabled: boolean;
   processControlEnabled: boolean;
+  browserToolsEnabled: boolean;
   subagents: boolean;
   agentDir: string;
   logging: LoggingConfig;
@@ -230,6 +232,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const processControlEnabled = env.DEVSPACE_PROCESS_CONTROL === undefined
     ? permissionProfile === "owner" && files.config.processControl === true
     : parseBoolean(env.DEVSPACE_PROCESS_CONTROL);
+  const browserToolsEnabled = env.DEVSPACE_BROWSER_TOOLS === undefined
+    ? canUseBrowserTools(permissionProfile) && files.config.browserTools === true
+    : parseBoolean(env.DEVSPACE_BROWSER_TOOLS);
 
   return {
     host,
@@ -261,6 +266,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     devspacePluginsDir: devspacePluginsDir(env),
     systemToolsEnabled,
     processControlEnabled,
+    browserToolsEnabled,
     subagents:
       env.DEVSPACE_SUBAGENTS === undefined
         ? files.config.subagents === true

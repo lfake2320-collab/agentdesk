@@ -127,6 +127,32 @@ Use process inspection first, then enable process control only for an explicit m
 DEVSPACE_PERMISSION_PROFILE=owner DEVSPACE_SYSTEM_TOOLS=1 DEVSPACE_PROCESS_CONTROL=1 npx @waishnav/devspace serve
 ```
 
+## Browser Control Tools
+
+`DEVSPACE_BROWSER_TOOLS` exposes an isolated Chromium-compatible browser session through MCP. It is disabled by default and intended for explicit, user-authorized web automation such as opening a page, reading visible text, clicking buttons, and filling forms. It does not silently reuse your normal browser cookies unless you deliberately point `DEVSPACE_BROWSER_EXECUTABLE` and the profile configuration at a browser/profile you control.
+
+| Tool | Purpose |
+| --- | --- |
+| `browser_start` | Start the controlled browser session. |
+| `browser_navigate` | Navigate the controlled browser to a URL. |
+| `browser_snapshot` | Read URL, title, visible text, and interactive elements. |
+| `browser_click` | Click by CSS selector or visible text. |
+| `browser_type` | Type into an input or editable element. |
+| `browser_close` | Close the controlled browser session. |
+
+Example owner session:
+
+```bash
+DEVSPACE_PERMISSION_PROFILE=owner DEVSPACE_BROWSER_TOOLS=1 npx agentdesk-mcp serve
+```
+
+Optional browser configuration:
+
+```bash
+DEVSPACE_BROWSER_EXECUTABLE="C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe"
+DEVSPACE_BROWSER_DEBUG_PORT=9222
+```
+
 ## Widgets
 
 `DEVSPACE_WIDGETS` controls ChatGPT Apps iframe usage.
