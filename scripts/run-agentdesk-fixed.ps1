@@ -74,6 +74,10 @@ $env:DEVSPACE_PUBLIC_BASE_URL = $PublicBaseUrl
 $env:DEVSPACE_ALLOWED_HOSTS = $AllowedHosts
 $env:DEVSPACE_ALLOWED_ROOTS = $AllowedRoots
 $env:DEVSPACE_OAUTH_OWNER_TOKEN = $token
+# Keep GPT connected across AgentDesk restarts. Existing OAuth state is persisted in .agentdesk-fixed-runtime\state.
+# 31536000 seconds = 365 days.
+$env:DEVSPACE_OAUTH_ACCESS_TOKEN_TTL_SECONDS = "31536000"
+$env:DEVSPACE_OAUTH_REFRESH_TOKEN_TTL_SECONDS = "31536000"
 $env:DEVSPACE_TRUST_PROXY = "1"
 $env:DEVSPACE_TOOL_MODE = "full"
 $env:DEVSPACE_PERMISSION_PROFILE = "owner"
