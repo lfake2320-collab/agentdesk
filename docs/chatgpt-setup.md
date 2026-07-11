@@ -98,7 +98,34 @@ C:\Users\<you>\.devspace\auth.json
 
 Keep this password private.
 
-## 4. Test from ChatGPT
+## 4. Check OAuth discovery
+
+If ChatGPT reports `does not implement OAuth`, first make sure you rebuilt and restarted AgentDesk after pulling the latest code:
+
+```powershell
+npm run build
+.\scripts\start-agentdesk-live-edge.ps1 -PublicBaseUrl "https://your-tunnel-host.example.com" -EdgeProfile Default
+```
+
+Then run this in a second PowerShell:
+
+```powershell
+.\scripts\test-agentdesk-oauth.ps1 -PublicBaseUrl "https://your-tunnel-host.example.com"
+```
+
+The checker should show JSON for these discovery URLs:
+
+```text
+/.well-known/oauth-protected-resource
+/.well-known/oauth-protected-resource/mcp
+/.well-known/oauth-authorization-server
+/mcp/.well-known/oauth-protected-resource
+/mcp/.well-known/oauth-authorization-server
+```
+
+If those routes return 404 or HTML from another service, your tunnel is not pointing at the running AgentDesk process.
+
+## 5. Test from ChatGPT
 
 After adding AgentDesk, ask ChatGPT:
 

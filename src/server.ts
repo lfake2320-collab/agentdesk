@@ -4,7 +4,7 @@ import { access, realpath } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
-import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from "@modelcontextprotocol/sdk/server/auth/router.js";
+import { createOAuthMetadata, mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from "@modelcontextprotocol/sdk/server/auth/router.js";
 import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
@@ -2102,16 +2102,36 @@ export function createServer(config = loadConfig()): RunningServer {
     next();
   });
 
+  const authBaseUrl = new URL(config.publicBaseUrl);
+  const oauthMetadata = createOAuthMetadata({
+    provider: oauthProvider,
+    issuerUrl: authBaseUrl,
+    baseUrl: authBaseUrl,
+    scopesSupported: config.oauth.scopes,
+  });
+  const protectedResourceMetadata = {
+    resource: resourceServerUrl.href,
+    authorization_servers: [oauthMetadata.issuer],
+    scopes_supported: config.oauth.scopes,
+    resource_name: "AgentDesk",
+  };
+
   app.use(
     mcpAuthRouter({
       provider: oauthProvider,
-      issuerUrl: new URL(config.publicBaseUrl),
-      baseUrl: new URL(config.publicBaseUrl),
+      issuerUrl: authBaseUrl,
+      baseUrl: authBaseUrl,
       resourceServerUrl,
       scopesSupported: config.oauth.scopes,
-      resourceName: "DevSpace",
+      resourceName: "AgentDesk",
     }),
   );
+
+  // Compatibility aliases for MCP clients that derive OAuth discovery URLs
+  // from the MCP endpoint itself instead of the RFC 9728 path-specific URL.
+  app.get("/.well-known/oauth-protected-resource", (_req, res) => res.json(protectedResourceMetadata));
+  app.get("/mcp/.well-known/oauth-protected-resource", (_req, res) => res.json(protectedResourceMetadata));
+  app.get("/mcp/.well-known/oauth-authorization-server", (_req, res) => res.json(oauthMetadata));
 
   app.options("/mcp-app-assets/{*asset}", (_req, res) => {
     setAssetHeaders(res);
