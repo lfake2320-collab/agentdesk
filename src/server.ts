@@ -2076,7 +2076,7 @@ export function createServer(config = loadConfig()): RunningServer {
     : [];
 
   if (config.logging.trustProxy) {
-    app.set("trust proxy", true);
+    app.set("trust proxy", "loopback");
   }
 
   app.use((req, res, next) => {
@@ -2132,6 +2132,8 @@ export function createServer(config = loadConfig()): RunningServer {
   app.get("/.well-known/oauth-protected-resource", (_req, res) => res.json(protectedResourceMetadata));
   app.get("/mcp/.well-known/oauth-protected-resource", (_req, res) => res.json(protectedResourceMetadata));
   app.get("/mcp/.well-known/oauth-authorization-server", (_req, res) => res.json(oauthMetadata));
+  app.get("/.well-known/openid-configuration", (_req, res) => res.json(oauthMetadata));
+  app.get("/mcp/.well-known/openid-configuration", (_req, res) => res.json(oauthMetadata));
 
   app.options("/mcp-app-assets/{*asset}", (_req, res) => {
     setAssetHeaders(res);
