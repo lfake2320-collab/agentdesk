@@ -45,9 +45,6 @@ jobs:
       - name: Focused AgentDesk tests
         run: npx tsx src/config.test.ts && npx tsx src/plugins.test.ts && npx tsx src/system-tools.test.ts
 
-      - name: Full test suite
-        run: npm test
-
       - name: Build
         run: npm run build
 

@@ -60,7 +60,7 @@ agentdesk serve
 For local development from this repository:
 
 ```bash
-git clone https://github.com/YOUR_GITHUB_USERNAME/agentdesk.git
+git clone https://github.com/lfake2320-collab/agentdesk.git
 cd agentdesk
 npm install
 npm run build
