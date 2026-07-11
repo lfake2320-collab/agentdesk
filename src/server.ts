@@ -69,6 +69,7 @@ import {
   getLocalAgentProviderAvailabilitySnapshot,
   type LocalAgentProviderAvailability,
 } from "./local-agent-availability.js";
+import { registerFileBrowserRoutes } from "./file-browser.js";
 
 type Transport = StreamableHTTPServerTransport;
 const WORKSPACE_APP_URI = "ui://devspace/workspace-app.html";
@@ -2149,6 +2150,8 @@ export function createServer(config = loadConfig()): RunningServer {
       setHeaders: setAssetHeaders,
     }),
   );
+
+  registerFileBrowserRoutes(app, config);
 
   app.get("/healthz", (_req, res) => {
     res.json({ ok: true, name: "devspace" });

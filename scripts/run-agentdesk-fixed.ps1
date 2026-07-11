@@ -20,6 +20,7 @@ $StateDir = Join-Path $RuntimeDir "state"
 $ConfigDir = Join-Path $RuntimeDir "config"
 $LogDir = Join-Path $RuntimeDir "logs"
 $AuthFile = Join-Path $ConfigDir "auth.json"
+$FileBrowserAuthFile = Join-Path $ConfigDir "file-browser-auth.json"
 $AgentDeskLog = Join-Path $LogDir "agentdesk-fixed.log"
 $SupervisorLog = Join-Path $LogDir "agentdesk-fixed-supervisor.log"
 
@@ -42,6 +43,12 @@ function New-OwnerToken {
   return "adsk-fixed-" + [Convert]::ToBase64String($bytes).TrimEnd("=").Replace("+", "-").Replace("/", "_")
 }
 
+function New-FileBrowserToken {
+  $bytes = New-Object byte[] 32
+  [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+  return "adsk-files-" + [Convert]::ToBase64String($bytes).TrimEnd("=").Replace("+", "-").Replace("/", "_")
+}
+
 if (-not (Test-Path $AuthFile)) {
   $token = New-OwnerToken
   $auth = @{ ownerToken = $token } | ConvertTo-Json -Depth 3
@@ -57,6 +64,23 @@ if (-not (Test-Path $AuthFile)) {
   }
   $auth = @{ ownerToken = $token } | ConvertTo-Json -Depth 3
   Write-Utf8NoBomFile -Path $AuthFile -Content $auth
+}
+
+if (-not (Test-Path $FileBrowserAuthFile)) {
+  $fileBrowserToken = New-FileBrowserToken
+  $fileBrowserAuth = @{ username = "agentdesk"; password = $fileBrowserToken } | ConvertTo-Json -Depth 3
+  Write-Utf8NoBomFile -Path $FileBrowserAuthFile -Content $fileBrowserAuth
+} else {
+  try {
+    $fileBrowserToken = (Get-Content $FileBrowserAuthFile -Raw | ConvertFrom-Json).password
+  } catch {
+    $fileBrowserToken = New-FileBrowserToken
+  }
+  if (-not $fileBrowserToken -or $fileBrowserToken.Length -lt 32) {
+    $fileBrowserToken = New-FileBrowserToken
+  }
+  $fileBrowserAuth = @{ username = "agentdesk"; password = $fileBrowserToken } | ConvertTo-Json -Depth 3
+  Write-Utf8NoBomFile -Path $FileBrowserAuthFile -Content $fileBrowserAuth
 }
 
 if (-not (Test-Path "dist\cli.js")) {
@@ -84,6 +108,8 @@ $env:DEVSPACE_OAUTH_OWNER_TOKEN = $token
 # 31536000 seconds = 365 days.
 $env:DEVSPACE_OAUTH_ACCESS_TOKEN_TTL_SECONDS = "31536000"
 $env:DEVSPACE_OAUTH_REFRESH_TOKEN_TTL_SECONDS = "31536000"
+$env:DEVSPACE_PUBLIC_FILE_BROWSER = "1"
+$env:DEVSPACE_FILE_BROWSER_TOKEN = $fileBrowserToken
 $env:DEVSPACE_TRUST_PROXY = "1"
 $env:DEVSPACE_TOOL_MODE = "full"
 $env:DEVSPACE_PERMISSION_PROFILE = "owner"
@@ -106,6 +132,7 @@ Write-Host "Starting fixed AgentDesk MCP supervisor..." -ForegroundColor Green
 Write-Host "Local MCP: http://127.0.0.1:$Port/mcp" -ForegroundColor Cyan
 Write-Host "Public MCP: $PublicBaseUrl/mcp" -ForegroundColor Cyan
 Write-Host "Owner password file: $AuthFile" -ForegroundColor Yellow
+Write-Host "File browser password file: $FileBrowserAuthFile" -ForegroundColor Yellow
 Write-Host "Log: $AgentDeskLog" -ForegroundColor Gray
 
 while ($true) {
