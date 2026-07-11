@@ -3,7 +3,9 @@ import { join, resolve } from "node:path";
 import { expandHomePath } from "./roots.js";
 import type { LoggingConfig, LogFormat, LogLevel } from "./logger.js";
 import type { OAuthConfig } from "./oauth-provider.js";
-import { devspaceAgentsDir, devspaceSkillsDir, loadDevspaceFiles } from "./user-config.js";
+import { devspaceAgentsDir, devspacePluginsDir, devspaceSkillsDir, loadDevspaceFiles } from "./user-config.js";
+import { parsePermissionProfile, type PermissionProfile } from "./permissions.js";
+import { canUseSystemTools } from "./system-tools.js";
 
 export type ToolMode = "minimal" | "full" | "codex";
 export type WidgetMode = "off" | "changes" | "full";
@@ -18,6 +20,7 @@ export interface ServerConfig {
   allowedHosts: string[];
   publicBaseUrl: string;
   toolMode: ToolMode;
+  permissionProfile: PermissionProfile;
   widgets: WidgetMode;
   stateDir: string;
   worktreeRoot: string;
@@ -25,6 +28,11 @@ export interface ServerConfig {
   skillPaths: string[];
   devspaceSkillsDir: string;
   devspaceAgentsDir: string;
+  pluginsEnabled: boolean;
+  pluginPaths: string[];
+  devspacePluginsDir: string;
+  systemToolsEnabled: boolean;
+  processControlEnabled: boolean;
   subagents: boolean;
   agentDir: string;
   logging: LoggingConfig;
@@ -215,6 +223,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     ...(files.config.allowedHosts ?? []),
   ];
 
+  const permissionProfile = parsePermissionProfile(env.DEVSPACE_PERMISSION_PROFILE ?? files.config.permissionProfile);
+  const systemToolsEnabled = env.DEVSPACE_SYSTEM_TOOLS === undefined
+    ? canUseSystemTools(permissionProfile)
+    : parseBoolean(env.DEVSPACE_SYSTEM_TOOLS);
+  const processControlEnabled = env.DEVSPACE_PROCESS_CONTROL === undefined
+    ? permissionProfile === "owner" && files.config.processControl === true
+    : parseBoolean(env.DEVSPACE_PROCESS_CONTROL);
+
   return {
     host,
     port,
@@ -223,13 +239,28 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     allowedHosts: parseAllowedHosts(env.DEVSPACE_ALLOWED_HOSTS, derivedAllowedHosts),
     publicBaseUrl,
     toolMode: parseToolMode(env),
+    permissionProfile,
     widgets: parseWidgetMode(env.DEVSPACE_WIDGETS),
     stateDir: resolve(expandHomePath(env.DEVSPACE_STATE_DIR ?? files.config.stateDir ?? defaultStateDir())),
     worktreeRoot: resolve(expandHomePath(env.DEVSPACE_WORKTREE_ROOT ?? files.config.worktreeRoot ?? defaultWorktreeRoot())),
     skillsEnabled: env.DEVSPACE_SKILLS === undefined ? true : parseBoolean(env.DEVSPACE_SKILLS),
-    skillPaths: parsePathList(env.DEVSPACE_SKILL_PATHS),
+    skillPaths: [
+      ...parsePathList(files.config.skillPaths?.join(",")),
+      ...parsePathList(env.DEVSPACE_SKILL_PATHS),
+    ],
     devspaceSkillsDir: devspaceSkillsDir(env),
     devspaceAgentsDir: devspaceAgentsDir(env),
+    pluginsEnabled:
+      env.DEVSPACE_PLUGINS === undefined
+        ? files.config.plugins !== false
+        : parseBoolean(env.DEVSPACE_PLUGINS),
+    pluginPaths: [
+      ...parsePathList(files.config.pluginPaths?.join(",")),
+      ...parsePathList(env.DEVSPACE_PLUGIN_PATHS),
+    ],
+    devspacePluginsDir: devspacePluginsDir(env),
+    systemToolsEnabled,
+    processControlEnabled,
     subagents:
       env.DEVSPACE_SUBAGENTS === undefined
         ? files.config.subagents === true

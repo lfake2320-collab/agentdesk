@@ -1,250 +1,262 @@
-<p align="center">
-  <picture>
-    <img src="https://raw.githubusercontent.com/Waishnav/devspace/main/docs/assets/devspace-logo-light.png" alt="DevSpace logo" width="140">
-  </picture>
-</p>
+# AgentDesk
 
-<h1 align="center">DevSpace</h1>
+> Turn ChatGPT into your local Windows-first engineering copilot.
 
-<p align="center">Bring a Codex-style coding workflow to ChatGPT.</p>
+AgentDesk is a Windows-first fork of DevSpace that gives ChatGPT, Claude, and other MCP-capable hosts a secure connection to your local development machine. It keeps the DevSpace local workspace model, then adds practical local diagnostics for Windows developers: ports, processes, proxy settings, system summaries, personal Skill Packs, plugin manifests, and permission profiles.
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@waishnav/devspace"><img alt="npm" src="https://img.shields.io/npm/v/%40waishnav%2Fdevspace?style=flat-square" /></a>
-  <a href="https://github.com/Waishnav/devspace/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Waishnav/devspace/ci.yml?style=flat-square&branch=main" /></a>
-  <a href="https://github.com/Waishnav/devspace/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/npm/l/%40waishnav%2Fdevspace?style=flat-square" /></a>
+  <strong>ChatGPT should not just write code. It should understand why your localhost, proxy, Docker, Codex, or dev server is broken.</strong>
 </p>
 
-[![DevSpace connected to ChatGPT](https://raw.githubusercontent.com/Waishnav/devspace/main/docs/assets/devspace-screenshot.png)](https://raw.githubusercontent.com/Waishnav/devspace/main/docs/assets/devspace-screenshot.png)
+## Why AgentDesk?
 
-**Give ChatGPT a secure connection to your own machine and Turn ChatGPT into Codex**
+DevSpace brings a Codex-style coding workflow to ChatGPT. AgentDesk goes further for everyday Windows and local-development troubleshooting.
 
-DevSpace is a self-hosted MCP server that lets ChatGPT read, edit, search, and run code in your real local projects — your files, your tools, your terminal — without uploading anything to a third party. You run it on your machine, expose it through a tunnel you control, and approve the connection with a password only you have.
+| Pain | AgentDesk answer |
+| --- | --- |
+| “Why is localhost:8080 not working?” | Inspect listening ports and map them to PIDs. |
+| “Why does Codex / MCP reconnect?” | Check Node, proxy, ports, and local process state. |
+| “Which process is holding my port?” | Use `system_ports`, `system_processes`, and `system_find_process`. |
+| “Can ChatGPT use my own workflow?” | Load personal Skill Packs from configurable directories. |
+| “Can I add my own tools?” | Advertise plugin manifests and build trusted MCP tool adapters. |
+| “Isn’t this dangerous?” | Use permission profiles and confirmation-gated process control. |
 
-## Sponsors and Special Thanks
+## Highlights
 
-<table>
-  <thead>
-    <tr>
-      <th>Sponsor</th>
-      <th>About</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td align="center" width="220">
-        <a href="https://rebates.ai/">
-          <img
-            src="https://app.rebates.ai/brand/rebates-lockup.svg"
-            alt="Rebates"
-            width="170"
-          >
-        </a>
-      </td>
-      <td>
-        <strong>The ads in your terminal pay you.</strong><br><br>
-        <a href="https://rebates.ai/">Rebates</a> adds one optional
-        sponsored footer to your coding agent and pays you cash back for every
-        session in which it is shown. Turn it off at any time.
-      </td>
-    </tr>
-  </tbody>
-</table>
+- **Windows-first local diagnostics**: system summary, proxy status, listening ports, process search, and controlled process termination.
+- **Permission profiles**: `safe`, `dev`, `power`, and `owner` guide how deeply the host model may operate.
+- **Personal Skill Packs**: load your own repeatable workflows for Codex repair, Docker debugging, YOLO projects, PyQt apps, papers, and more.
+- **Plugin manifest system**: advertise local capabilities without blindly executing unknown plugin code.
+- **MCP workspace server**: read, edit, search, write, run tests, and inspect real local projects through approved roots.
+- **Safer defaults**: powerful tools are opt-in, process control is off unless explicitly enabled, and destructive actions require confirmation phrases.
 
-<p>
-  DevSpace is open to new sponsors.
-  <a href="https://x.com/wshxnv">Get in touch to become one.</a>
-</p>
+## What is new compared with upstream DevSpace?
 
-## Installation
+AgentDesk is based on `Waishnav/devspace`, but focuses on a different user story: local Windows engineering support and personal automation.
 
-DevSpace requires Node `>=22.19 <27`.
+| Area | DevSpace | AgentDesk |
+| --- | --- | --- |
+| Core MCP workspace | Yes | Yes |
+| File read/edit/search/write | Yes | Yes |
+| Shell tools | Yes | Yes |
+| Permission profiles | No | Yes: `safe/dev/power/owner` |
+| Plugin manifests | No | Yes |
+| Personal Skill Pack examples | Limited | Yes |
+| System diagnostics | No | Yes |
+| Port/process diagnosis | No | Yes |
+| Confirmation-gated process kill | No | Yes, owner-only and opt-in |
+| Windows-first positioning | Partial | Primary focus |
 
-Install the DevSpace CLI:
+## Quick start
+
+AgentDesk requires Node.js `>=22.19 <27`.
 
 ```bash
-npm install -g @waishnav/devspace
+npm install -g agentdesk-mcp
+agentdesk init
+agentdesk serve
 ```
 
-Then initialize and start the server:
+For local development from this repository:
 
 ```bash
-devspace init
-devspace serve
+git clone https://github.com/YOUR_GITHUB_USERNAME/agentdesk.git
+cd agentdesk
+npm install
+npm run build
+node dist/cli.js init
+node dist/cli.js serve
 ```
 
-Or run it without a global install:
-
-```bash
-npx @waishnav/devspace init
-npx @waishnav/devspace serve
-```
-
-During setup, DevSpace asks for:
-
-- the local project folders ChatGPT is allowed to open through DevSpace
-- the local port, usually `7676`
-- your public HTTPS base URL from Cloudflare Tunnel, ngrok, Pinggy, Tailscale Funnel, or
-  another reverse proxy
-
-Use the public origin without `/mcp` during setup:
-
-```text
-https://your-tunnel-host.example.com
-```
-
-You will configure your MCP client with the public `/mcp` URL after setup.
-
-When the client connects, DevSpace opens an Owner password approval page. Enter
-the Owner password printed by `devspace init`. It is also stored in:
-
-```text
-~/.devspace/auth.json
-```
-
-Keep that password private.
-
-## Connect Your MCP Client
-
-The default local endpoint is:
+The local MCP endpoint is:
 
 ```text
 http://127.0.0.1:7676/mcp
 ```
 
-Most users should connect through a public HTTPS tunnel:
+For ChatGPT or another remote MCP host, expose the server through a tunnel you control, then connect to:
 
 ```text
 https://your-tunnel-host.example.com/mcp
 ```
 
-> [!NOTE]
-> Using DevSpace as an MCP connector isn't against OpenAI's Usage Policies — it's
-> a standard custom App/connector setup, and writing or running code isn't a
-> restricted use case. But your account is governed by your usage, not by
-> DevSpace. Don't point it at anything that would violate your provider's terms.
-> Used normally, you're fine. (Based on OpenAI's Usage Policies and Service Terms
-> as of June 2026.)
+Keep your Owner password private. AgentDesk is remote access to your development machine.
 
-## What ChatGPT Can Do
+## Recommended Windows power setup
 
-Once connected, ChatGPT can open one of your approved project folders as a
-workspace. From there, it can inspect the repo, make scoped edits, run commands,
-and show you what changed.
+For deeper diagnostics without enabling destructive process control:
 
-DevSpace gives ChatGPT tools to:
+```powershell
+$env:DEVSPACE_PERMISSION_PROFILE="power"
+$env:DEVSPACE_SYSTEM_TOOLS="1"
+$env:DEVSPACE_TOOL_MODE="full"
+agentdesk serve
+```
 
-- read, write, and edit files inside the opened workspace
-- search code and inspect directories
-- run shell commands for tests, builds, git, and package scripts
-- use isolated Git worktrees for parallel coding sessions
-- follow project instructions from `AGENTS.md` and `CLAUDE.md`
-- discover local agent skills from your skill folders
-- show tool cards and optional change summaries in ChatGPT Apps-compatible hosts
+For owner-only process control, enable it explicitly:
 
-## Mental Model
+```powershell
+$env:DEVSPACE_PERMISSION_PROFILE="owner"
+$env:DEVSPACE_SYSTEM_TOOLS="1"
+$env:DEVSPACE_PROCESS_CONTROL="1"
+$env:DEVSPACE_TOOL_MODE="full"
+agentdesk serve
+```
 
-DevSpace is remote access to selected local folders.
+`system_kill_process_confirmed` still requires an exact confirmation phrase such as:
 
-You decide which roots are allowed. The MCP client still has powerful local
-capabilities inside an opened workspace, including shell execution. Treat a
-connected client like a trusted coding partner with access to your machine.
+```text
+KILL 1234
+```
 
-For a normal ChatGPT coding session:
+AgentDesk refuses to kill its own process or its parent process.
 
-1. Start your tunnel.
-2. Run `devspace serve`.
-3. Connect the MCP client to your public `/mcp` URL.
-4. Approve the connection with the Owner password.
-5. Ask ChatGPT to open a project inside one of your allowed roots.
+## MCP tools added by AgentDesk
 
-## Platform Support
+The system tools are exposed only when system tools are enabled. By default, that means `power` and `owner` profiles.
 
-DevSpace supports Linux, macOS, and Windows environments with a Bash-compatible
-shell.
+| Tool | Purpose | Risk |
+| --- | --- | --- |
+| `system_summary` | OS, Node.js, CPU, and memory summary. | Read-only |
+| `system_proxy_status` | Proxy environment variables with credentials redacted. | Read-only |
+| `system_ports` | Listening TCP ports, optionally filtered by port. | Read-only |
+| `system_doctor` | Combined system, proxy, port, and process diagnostics. | Read-only |
+| `system_processes` | List local processes. | Read-only |
+| `system_find_process` | Search by PID, name, command, or session. | Read-only |
+| `system_kill_process_confirmed` | Terminate a PID after explicit confirmation. | Owner-only, opt-in |
 
-| Platform                                          | Status            | Notes                                          |
-| ------------------------------------------------- | ----------------- | ---------------------------------------------- |
-| Linux                                             | Supported         | Requires Node, npm, Git, and Bash.             |
-| macOS                                             | Supported         | Requires Node, npm, Git, and Bash.             |
-| Windows with Git Bash, WSL, MSYS2, or Cygwin Bash | Supported         | Git Bash is the simplest native Windows setup. |
-| Windows PowerShell or `cmd.exe` only              | Not supported yet | Install Git Bash or use WSL.                   |
+## Permission profiles
 
-Run this to inspect your local setup:
+| Profile | Recommended use |
+| --- | --- |
+| `safe` | Review, inspection, low-risk edits. |
+| `dev` | Normal coding, tests, builds, and git inspection. |
+| `power` | Local diagnostics for ports, processes, proxy, Docker, browsers, and services. |
+| `owner` | Highest-trust maintenance sessions; destructive actions still need explicit confirmation. |
+
+Set a profile with:
 
 ```bash
-devspace doctor
+DEVSPACE_PERMISSION_PROFILE=power agentdesk serve
 ```
+
+## Personal Skill Packs
+
+AgentDesk can load skills from multiple locations:
+
+```text
+~/.agents/skills
+project/.agents/skills
+~/.devspace/skills
+DEVSPACE_AGENT_DIR/skills
+DEVSPACE_SKILL_PATHS
+```
+
+Example:
+
+```powershell
+$env:DEVSPACE_SKILL_PATHS="C:\Users\you\.devspace\skills,G:\AI\skills"
+agentdesk serve
+```
+
+A skill is a `SKILL.md` file that teaches the model your preferred workflow. This repository includes an example:
+
+```text
+examples/skills/codex-repair/SKILL.md
+```
+
+## Plugin manifests
+
+AgentDesk can discover plugin manifests from:
+
+```text
+~/.agents/plugins
+project/.agents/plugins
+~/.devspace/plugins
+project/.devspace/plugins
+DEVSPACE_PLUGIN_PATHS
+```
+
+Example plugin manifest:
+
+```text
+examples/plugins/windows-tools/plugin.json
+```
+
+Plugin manifests are capability metadata. AgentDesk does not blindly execute arbitrary plugin code from `plugin.json`; actual executable tools must be implemented by a trusted MCP host or adapter.
+
+## Demo script for your README GIF
+
+Use this scenario for a short GIF or video:
+
+```text
+User: Why is my localhost:8080 not working?
+AgentDesk:
+1. Opens the project workspace.
+2. Calls system_ports with port=8080.
+3. Finds the listening PID.
+4. Calls system_find_process for that PID.
+5. Explains which process owns the port.
+6. In owner mode only, asks for confirmation before killing the PID.
+```
+
+Put the GIF under:
+
+```text
+docs/assets/agentdesk-demo.gif
+```
+
+Then add it near the top of this README.
 
 ## Documentation
 
-- [Setup Guide](https://github.com/Waishnav/devspace/blob/main/docs/setup.md)
-- [ChatGPT Coding Workflow](https://github.com/Waishnav/devspace/blob/main/docs/chatgpt-coding-workflow.md)
-- [Configuration Reference](https://github.com/Waishnav/devspace/blob/main/docs/configuration.md)
-- [Security Model](https://github.com/Waishnav/devspace/blob/main/docs/security.md)
-- [Troubleshooting Gotchas](https://github.com/Waishnav/devspace/blob/main/docs/gotchas.md)
+- [Getting Started](docs/getting-started.md)
+- [Star Roadmap](docs/star-roadmap.md)
+- [Demo Script](docs/demo-script.md)
+- [Configuration Reference](docs/configuration.md)
+- [Security](SECURITY.md)
+- [Changelog](CHANGELOG.md)
 
-## Philosophy
+## Safety model
 
-Every piece of software is becoming conversational. Natural language is
-redefining how we interact with tools, workflows, and systems.
+AgentDesk exposes local development capabilities over MCP. Treat it as remote access to your computer.
 
-My bet is that ChatGPT becomes the operating system for everything. Once we
-reach AGI, we will simply talk to ChatGPT, and it will prompt, coordinate, and
-orchestrate sub-agents that set up the right loops for us.
+Use narrow allowed roots:
 
-We are not there yet.
-
-DevSpace is one attempt to fast-forward that future: a way for MCP-capable
-hosts like ChatGPT and Claude to work directly with local project files through
-explicit, inspectable tools.
-
-## Built by Waishnav
-
-I'm Waishnav, I like building opinionated products and tools, and DevSpace is one example of that.
-This year, I started my journey to build a single-person and multiple-agents company doing multiple millions in
-revenue. If you want to watch the failures, wins, lessons, and everything in
-between, come hang out with me on [X](https://x.com/wshxnv).
-
-## More from me
-
-<table>
-  <thead>
-    <tr>
-      <th>Project</th>
-      <th>About</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td align="center" width="220">
-        <a href="https://gitcms.dev/">
-          <img
-            src="https://gitcms.dev/brand/gitcms-logo.svg"
-            alt="GitCMS"
-            width="48"
-          /><br />
-          <strong>GitCMS</strong>
-        </a>
-      </td>
-      <td>
-        <strong>Modern CMS and tooling for markdown based content sites — built for agents and humans.</strong><br><br>
-        Visual editing, editorial workflow, and ChatGPT/Claude content agents, with
-        every post and page stored as files in your repo.
-        <a href="https://gitcms.dev/">Learn more</a>.
-      </td>
-    </tr>
-  </tbody>
-</table>
-
-## Local Development
-
-For working on DevSpace itself:
-
-```bash
-npm install --include=dev
-npm run dev
-npm run typecheck
-npm test
-npm run build
-npm run start
+```text
+Good: C:\Users\you\Projects
+Bad:  C:\
+Bad:  C:\Users\you
 ```
+
+Recommended rules:
+
+- Keep the Owner password private.
+- Do not expose AgentDesk directly to the public internet without authentication and a tunnel/proxy you trust.
+- Use `power` for diagnostics and reserve `owner` for short, explicit maintenance sessions.
+- Keep `DEVSPACE_PROCESS_CONTROL=0` unless you specifically need confirmed process termination.
+- Never share logs that may include local paths, commands, or project names unless you review them first.
+
+## Roadmap
+
+- [x] Permission profiles: `safe`, `dev`, `power`, `owner`
+- [x] Plugin manifest discovery
+- [x] Personal Skill Pack examples
+- [x] System summary and proxy diagnostics
+- [x] Port and process diagnostics
+- [x] Confirmation-gated process termination
+- [ ] Docker diagnostics: containers, logs, compose status
+- [ ] Codex repair doctor: config, proxy, MCP, local runtime checks
+- [ ] Browser diagnostics: open page, screenshot localhost, check status
+- [ ] Plugin execution adapter for trusted local extensions
+- [ ] Windows-friendly installer and doctor wizard
+
+## Credits
+
+AgentDesk is based on [Waishnav/devspace](https://github.com/Waishnav/devspace), an excellent self-hosted MCP workspace server that brings Codex-style local coding workflows to ChatGPT and Claude.
+
+This fork keeps the original MIT license and credits the upstream work. AgentDesk focuses on Windows-first local diagnostics, permission profiles, personal skills, and plugin-driven automation.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

@@ -1,0 +1,18 @@
+{
+  "allowedRoots": [
+    "G:/Projects",
+    "C:/Users/23209/Documents"
+  ],
+  "permissionProfile": "power",
+  "systemTools": true,
+  "processControl": false,
+  "skillPaths": [
+    "C:/Users/23209/.devspace/skills",
+    "G:/AI/skills"
+  ],
+  "pluginPaths": [
+    "C:/Users/23209/.devspace/plugins",
+    "G:/AI/devspace-plugins"
+  ],
+  "subagents": true
+}

@@ -22,6 +22,9 @@ jobs:
       DEVSPACE_ALLOWED_ROOTS: ${{ github.workspace }}
       DEVSPACE_OAUTH_OWNER_TOKEN: ci-owner-token-that-is-long-enough
       DEVSPACE_PUBLIC_BASE_URL: http://127.0.0.1:7676
+      DEVSPACE_PERMISSION_PROFILE: power
+      DEVSPACE_SYSTEM_TOOLS: "1"
+      DEVSPACE_PROCESS_CONTROL: "0"
 
     steps:
       - name: Checkout
@@ -39,7 +42,10 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Test
+      - name: Focused AgentDesk tests
+        run: npx tsx src/config.test.ts && npx tsx src/plugins.test.ts && npx tsx src/system-tools.test.ts
+
+      - name: Full test suite
         run: npm test
 
       - name: Build

@@ -18,6 +18,10 @@ import {
   loadLocalAgentProfiles,
   type LocalAgentProfile,
 } from "./local-agent-profiles.js";
+import {
+  loadWorkspacePlugins,
+  type LoadedPlugins,
+} from "./plugins.js";
 
 export interface LoadedAgentsFile {
   path: string;
@@ -45,6 +49,8 @@ export interface Workspace {
   worktree?: WorkspaceWorktree;
   skills: LoadedSkills["skills"];
   skillDiagnostics: LoadedSkills["diagnostics"];
+  plugins: LoadedPlugins["plugins"];
+  pluginDiagnostics: LoadedPlugins["diagnostics"];
   agentProfiles: LocalAgentProfile[];
   activatedSkillDirs: Set<string>;
 }
@@ -122,6 +128,7 @@ export class WorkspaceRegistry {
             }
           : undefined,
       ...this.loadSkillsForWorkspace(root),
+      ...this.loadPluginsForWorkspace(root),
       agentProfiles: [],
       activatedSkillDirs: new Set(),
     };
@@ -211,6 +218,7 @@ export class WorkspaceRegistry {
       sourceRoot: input.sourceRoot,
       worktree: input.worktree,
       ...this.loadSkillsForWorkspace(input.root),
+      ...this.loadPluginsForWorkspace(input.root),
       agentProfiles: await loadLocalAgentProfiles(this.config, input.root),
       activatedSkillDirs: new Set(),
     };
@@ -236,6 +244,14 @@ export class WorkspaceRegistry {
     return {
       skills: result.skills,
       skillDiagnostics: result.diagnostics,
+    };
+  }
+
+  private loadPluginsForWorkspace(root: string): Pick<Workspace, "plugins" | "pluginDiagnostics"> {
+    const result = loadWorkspacePlugins(this.config, root);
+    return {
+      plugins: result.plugins,
+      pluginDiagnostics: result.diagnostics,
     };
   }
 

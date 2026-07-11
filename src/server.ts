@@ -39,6 +39,18 @@ import { SingleUserOAuthProvider } from "./oauth-provider.js";
 import { ProcessSessionManager, type ProcessSnapshot } from "./process-sessions.js";
 import { createReviewCheckpointManager } from "./review-checkpoints.js";
 import { formatPathForPrompt } from "./skills.js";
+import {
+  canUseProcessControl,
+  collectSystemDiagnostics,
+  expectedKillConfirmation,
+  formatProcessList,
+  formatSystemDiagnostics,
+  killProcess,
+  listProcesses,
+  proxySummary,
+  systemSummary,
+} from "./system-tools.js";
+import { formatPermissionProfileForPrompt } from "./permissions.js";
 import { createWorkspaceStore } from "./workspace-store.js";
 import { formatAgentsPath, WorkspaceRegistry } from "./workspaces.js";
 import { summarizeLocalAgentProfile } from "./local-agent-profiles.js";
@@ -170,13 +182,23 @@ interface ToolLogFields {
 }
 
 function serverInstructions(config: ServerConfig): string {
+  const permissionInstruction = `Active permission profile: ${formatPermissionProfileForPrompt(config.permissionProfile)} `;
+  const pluginInstruction = config.pluginsEnabled
+    ? "When open_workspace returns available plugin manifests, treat them as capability hints and configuration metadata; only call plugin tools that are actually exposed by the MCP host. "
+    : "";
+  const systemInstruction = config.systemToolsEnabled
+    ? "Use system diagnostic tools for local OS, proxy, listening-port, and process inspection when they are more precise than shell commands. These read-only tools still require an open workspaceId. "
+    : "";
+  const processControlInstruction = canUseProcessControl(config.permissionProfile, config.processControlEnabled)
+    ? "Process termination is available only through the dedicated confirmed process-control tool. Never terminate a process without the exact user-provided confirmation phrase required by the tool. "
+    : "";
   const showChangesInstruction =
     config.widgets === "changes"
       ? " If the turn successfully modifies files by creating, editing, overwriting, deleting, moving, or applying patches, call show_changes exactly once for that workspace after the final related file change and before your final response so the user can inspect the aggregate diff for that turn. Do not call it after every individual file change; do not skip it because individual file-change tools already returned diffs."
       : "";
 
   if (config.toolMode === "codex") {
-    return `Use DevSpace as a local coding workspace. Call ${toolNames.openWorkspace} once per project folder or worktree and reuse its workspaceId. Use ${toolNames.read} for direct file reads, apply_patch for all file modifications, exec_command for inspection, tests, builds, and other commands, and write_stdin to poll or interact with running processes. Follow instructions returned by ${toolNames.openWorkspace}; read applicable instruction and skill files before working in their scope.${showChangesInstruction}`;
+    return `Use DevSpace as a local coding workspace. ${permissionInstruction}${pluginInstruction}${systemInstruction}${processControlInstruction}Call ${toolNames.openWorkspace} once per project folder or worktree and reuse its workspaceId. Use ${toolNames.read} for direct file reads, apply_patch for all file modifications, exec_command for inspection, tests, builds, and other commands, and write_stdin to poll or interact with running processes. Follow instructions returned by ${toolNames.openWorkspace}; read applicable instruction and skill files before working in their scope.${showChangesInstruction}`;
   }
 
   const inspection = config.toolMode !== "full"
@@ -189,7 +211,7 @@ function serverInstructions(config: ServerConfig): string {
 
   const agentsMd = `Follow instructions returned by ${toolNames.openWorkspace}. Before working under a path listed in availableAgentsFiles, use ${toolNames.read} to inspect that instruction file and follow it. `;
 
-  return `Use DevSpace as a local coding workspace. Call ${toolNames.openWorkspace} once per project folder or worktree to obtain a workspaceId. Reuse that same workspaceId for all later file, search, edit, write, show-changes, and shell tools in that folder; do not call ${toolNames.openWorkspace} again unless switching folders/worktrees, changing checkout/worktree mode, the workspaceId is rejected as unknown, or the user explicitly asks to reopen. ${agentsMd}${skills}${inspection}Prefer ${toolNames.edit} for targeted modifications, ${toolNames.write} only for new files or complete rewrites, and ${toolNames.shell} for tests, builds, git inspection, package scripts, and commands that are better executed by the shell. Do not create or modify files with ${toolNames.shell}; avoid shell redirection, heredocs, tee, sed -i, perl -i, node/python/ruby scripts, or any command whose purpose is to write project files.${showChangesInstruction}`;
+  return `Use DevSpace as a local coding workspace. ${permissionInstruction}${pluginInstruction}${systemInstruction}${processControlInstruction}Call ${toolNames.openWorkspace} once per project folder or worktree to obtain a workspaceId. Reuse that same workspaceId for all later file, search, edit, write, show-changes, and shell tools in that folder; do not call ${toolNames.openWorkspace} again unless switching folders/worktrees, changing checkout/worktree mode, the workspaceId is rejected as unknown, or the user explicitly asks to reopen. ${agentsMd}${skills}${inspection}Prefer ${toolNames.edit} for targeted modifications, ${toolNames.write} only for new files or complete rewrites, and ${toolNames.shell} for tests, builds, git inspection, package scripts, and commands that are better executed by the shell. Do not create or modify files with ${toolNames.shell}; avoid shell redirection, heredocs, tee, sed -i, perl -i, node/python/ruby scripts, or any command whose purpose is to write project files.${showChangesInstruction}`;
 }
 
 function formatVisibleAgent(agent: {
@@ -226,6 +248,19 @@ function resultOutputSchema(extra: z.ZodRawShape = {}): z.ZodRawShape {
 const workspaceSkillOutputSchema = z.object({
   name: z.string(),
   description: z.string(),
+  path: z.string(),
+});
+
+const workspacePluginOutputSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  version: z.string().optional(),
+  permissions: z.array(z.string()).optional(),
+  skills: z.array(z.string()).optional(),
+  tools: z.array(z.object({
+    name: z.string(),
+    description: z.string().optional(),
+  })).optional(),
   path: z.string(),
 });
 
@@ -351,6 +386,212 @@ function contentLineCount(content: string): number {
   return content.endsWith("\n")
     ? content.slice(0, -1).split("\n").length
     : content.split("\n").length;
+}
+
+function registerSystemDiagnosticTools(
+  server: McpServer,
+  config: ServerConfig,
+  workspaces: WorkspaceRegistry,
+): void {
+  const workspaceIdSchema = z.string().describe("Workspace identifier returned by open_workspace. Required to keep system diagnostics tied to an authorized DevSpace session.");
+
+  registerAppTool(
+    server,
+    "system_summary",
+    {
+      title: "System summary",
+      description: "Read-only local system summary for the current DevSpace host: OS, Node.js version, CPU count, and memory. Requires permission profile power or owner and an open workspaceId.",
+      inputSchema: { workspaceId: workspaceIdSchema },
+      outputSchema: resultOutputSchema(),
+      _meta: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ workspaceId }) => {
+      const startedAt = performance.now();
+      workspaces.getWorkspace(workspaceId);
+      const summary = systemSummary();
+      const result = [
+        `System: ${summary.os.type} ${summary.os.release} ${summary.os.arch} (${summary.os.platform})`,
+        `Node: ${summary.node}`,
+        `CPU: ${summary.cpuCount} logical cores`,
+        `Memory: ${summary.memory.freeMb} MB free / ${summary.memory.totalMb} MB total`,
+      ].join("\n");
+      logToolCall(config, { tool: "system_summary", workspaceId, success: true, durationMs: Math.round(performance.now() - startedAt) });
+      return { content: [textBlock(result)], structuredContent: { result } };
+    },
+  );
+
+  registerAppTool(
+    server,
+    "system_proxy_status",
+    {
+      title: "Proxy status",
+      description: "Read-only proxy environment inspection. Reports HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, and NO_PROXY style variables with credentials redacted. Requires permission profile power or owner and an open workspaceId.",
+      inputSchema: { workspaceId: workspaceIdSchema },
+      outputSchema: resultOutputSchema(),
+      _meta: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ workspaceId }) => {
+      const startedAt = performance.now();
+      workspaces.getWorkspace(workspaceId);
+      const proxy = proxySummary();
+      const entries = Object.entries(proxy.variables);
+      const result = proxy.hasProxy
+        ? ["Proxy environment:", ...entries.map(([key, value]) => `  - ${key}=${value}`)].join("\n")
+        : "Proxy environment: none detected";
+      logToolCall(config, { tool: "system_proxy_status", workspaceId, success: true, durationMs: Math.round(performance.now() - startedAt) });
+      return { content: [textBlock(result)], structuredContent: { result } };
+    },
+  );
+
+  registerAppTool(
+    server,
+    "system_ports",
+    {
+      title: "Listening ports",
+      description: "Read-only local listening TCP port inspection. Useful for diagnosing localhost conflicts such as 3000, 8080, or 57321. Requires permission profile power or owner and an open workspaceId.",
+      inputSchema: {
+        workspaceId: workspaceIdSchema,
+        port: z.number().int().min(1).max(65535).optional().describe("Optional TCP port to filter for."),
+      },
+      outputSchema: resultOutputSchema(),
+      _meta: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ workspaceId, port }) => {
+      const startedAt = performance.now();
+      workspaces.getWorkspace(workspaceId);
+      try {
+        const diagnostics = await collectSystemDiagnostics(port);
+        const portOnly = { ...diagnostics, summary: systemSummary(), proxy: { variables: {}, hasProxy: false } };
+        const result = formatSystemDiagnostics(portOnly).split("\n").filter((line) => !line.startsWith("System:") && !line.startsWith("Node:") && !line.startsWith("CPU:") && !line.startsWith("Memory:") && !line.startsWith("Proxy environment")).join("\n");
+        logToolCall(config, { tool: "system_ports", workspaceId, success: true, durationMs: Math.round(performance.now() - startedAt) });
+        return { content: [textBlock(result || "Listening ports: none found or not available")], structuredContent: { result: result || "Listening ports: none found or not available" } };
+      } catch (error) {
+        const result = `Port inspection failed: ${error instanceof Error ? error.message : String(error)}`;
+        logToolCall(config, { tool: "system_ports", workspaceId, success: false, durationMs: Math.round(performance.now() - startedAt), error: result });
+        return { content: [textBlock(result)], structuredContent: { result }, isError: true };
+      }
+    },
+  );
+
+  registerAppTool(
+    server,
+    "system_processes",
+    {
+      title: "Processes",
+      description: "Read-only local process listing with optional query filter. Useful for finding Node, Docker, browser, or service processes before deciding what to do next. Requires permission profile power or owner and an open workspaceId.",
+      inputSchema: {
+        workspaceId: workspaceIdSchema,
+        query: z.string().optional().describe("Optional case-insensitive search over PID, process name, command, or session."),
+        limit: z.number().int().min(1).max(500).optional().describe("Maximum number of processes to return. Defaults to 80."),
+      },
+      outputSchema: resultOutputSchema(),
+      _meta: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ workspaceId, query, limit }) => {
+      const startedAt = performance.now();
+      workspaces.getWorkspace(workspaceId);
+      try {
+        const result = formatProcessList(await listProcesses(query, limit));
+        logToolCall(config, { tool: "system_processes", workspaceId, success: true, durationMs: Math.round(performance.now() - startedAt) });
+        return { content: [textBlock(result)], structuredContent: { result } };
+      } catch (error) {
+        const result = `Process inspection failed: ${error instanceof Error ? error.message : String(error)}`;
+        logToolCall(config, { tool: "system_processes", workspaceId, success: false, durationMs: Math.round(performance.now() - startedAt), error: result });
+        return { content: [textBlock(result)], structuredContent: { result }, isError: true };
+      }
+    },
+  );
+
+  registerAppTool(
+    server,
+    "system_find_process",
+    {
+      title: "Find process",
+      description: "Read-only targeted process search. Use this before any process-control action to identify the exact PID and name. Requires permission profile power or owner and an open workspaceId.",
+      inputSchema: {
+        workspaceId: workspaceIdSchema,
+        query: z.string().min(1).describe("Case-insensitive search over PID, process name, command, or session."),
+      },
+      outputSchema: resultOutputSchema(),
+      _meta: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ workspaceId, query }) => {
+      const startedAt = performance.now();
+      workspaces.getWorkspace(workspaceId);
+      try {
+        const result = formatProcessList(await listProcesses(query, 50));
+        logToolCall(config, { tool: "system_find_process", workspaceId, success: true, durationMs: Math.round(performance.now() - startedAt) });
+        return { content: [textBlock(result)], structuredContent: { result } };
+      } catch (error) {
+        const result = `Process search failed: ${error instanceof Error ? error.message : String(error)}`;
+        logToolCall(config, { tool: "system_find_process", workspaceId, success: false, durationMs: Math.round(performance.now() - startedAt), error: result });
+        return { content: [textBlock(result)], structuredContent: { result }, isError: true };
+      }
+    },
+  );
+
+  if (canUseProcessControl(config.permissionProfile, config.processControlEnabled)) {
+    registerAppTool(
+      server,
+      "system_kill_process_confirmed",
+      {
+        title: "Kill process confirmed",
+        description: "Terminate a local process by PID. This is exposed only when DEVSPACE_PROCESS_CONTROL=1 and permission profile is owner. Requires exact confirmationPhrase equal to KILL <pid>.",
+        inputSchema: {
+          workspaceId: workspaceIdSchema,
+          pid: z.number().int().min(1).describe("PID to terminate."),
+          force: z.boolean().optional().describe("Use forceful termination when supported. Defaults to false."),
+          confirmationPhrase: z.string().describe("Must exactly equal KILL <pid>, for example KILL 12345."),
+          reason: z.string().min(1).describe("User-visible reason for terminating this process."),
+        },
+        outputSchema: resultOutputSchema(),
+        _meta: {},
+        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+      },
+      async ({ workspaceId, pid, force, confirmationPhrase, reason }) => {
+        const startedAt = performance.now();
+        workspaces.getWorkspace(workspaceId);
+        const expected = expectedKillConfirmation(pid);
+        if (confirmationPhrase !== expected) {
+          const result = `Refusing to terminate PID ${pid}. confirmationPhrase must exactly equal: ${expected}`;
+          logToolCall(config, { tool: "system_kill_process_confirmed", workspaceId, success: false, durationMs: Math.round(performance.now() - startedAt), error: result });
+          return { content: [textBlock(result)], structuredContent: { result }, isError: true };
+        }
+        const output = await killProcess({ pid, force });
+        const result = [`Terminated PID ${pid}.`, `Reason: ${reason}`, output].join("\n");
+        logToolCall(config, { tool: "system_kill_process_confirmed", workspaceId, success: true, durationMs: Math.round(performance.now() - startedAt) });
+        return { content: [textBlock(result)], structuredContent: { result } };
+      },
+    );
+  }
+
+  registerAppTool(
+    server,
+    "system_doctor",
+    {
+      title: "System doctor",
+      description: "Read-only combined local diagnostics: system summary, proxy environment, and listening ports. Requires permission profile power or owner and an open workspaceId.",
+      inputSchema: {
+        workspaceId: workspaceIdSchema,
+        port: z.number().int().min(1).max(65535).optional().describe("Optional TCP port to filter for when diagnosing a specific service."),
+      },
+      outputSchema: resultOutputSchema(),
+      _meta: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ workspaceId, port }) => {
+      const startedAt = performance.now();
+      workspaces.getWorkspace(workspaceId);
+      const result = formatSystemDiagnostics(await collectSystemDiagnostics(port));
+      logToolCall(config, { tool: "system_doctor", workspaceId, success: true, durationMs: Math.round(performance.now() - startedAt) });
+      return { content: [textBlock(result)], structuredContent: { result } };
+    },
+  );
 }
 
 function countDiffStats(diff: string | undefined): DiffStats {
@@ -752,6 +993,7 @@ function createMcpServer(
         workspaceId: z.string(),
         root: z.string(),
         mode: z.enum(["checkout", "worktree"]),
+        permissionProfile: z.string(),
         sourceRoot: z.string().optional(),
         worktree: z
           .object({
@@ -766,9 +1008,11 @@ function createMcpServer(
         agentsFiles: z.array(workspaceAgentsFileOutputSchema),
         availableAgentsFiles: z.array(workspaceAvailableAgentsFileOutputSchema),
         skills: z.array(workspaceSkillOutputSchema),
+        plugins: z.array(workspacePluginOutputSchema),
         agentProviders: z.array(workspaceLocalAgentProviderOutputSchema),
         agents: z.array(workspaceLocalAgentOutputSchema),
         skillDiagnostics: z.array(z.unknown()),
+        pluginDiagnostics: z.array(z.string()),
         instruction: z.string(),
       },
       ...toolWidgetDescriptorMeta(config, "workspace"),
@@ -790,6 +1034,10 @@ function createMcpServer(
           description: skill.description,
           path: formatPathForPrompt(skill.filePath),
         }));
+      const visiblePlugins = workspace.plugins.map((plugin) => ({
+        ...plugin,
+        path: formatPathForPrompt(plugin.path),
+      }));
       const visibleAgentProviders = config.subagents ? localAgentProviders : [];
       const visibleAgents = workspace.agentProfiles.map((profile) => {
         const summary = summarizeLocalAgentProfile(profile);
@@ -808,8 +1056,8 @@ function createMcpServer(
         path: formatAgentsPath(file.path, workspace.root),
       }));
       const instruction = config.skillsEnabled
-        ? "Use this workspaceId in all subsequent tool calls for this project. Do not call open_workspace again for this same folder unless this workspaceId stops working, the user asks to reopen, or you switch to a different folder/worktree. Follow loaded agentsFiles instructions. Before working under a path listed in availableAgentsFiles, read that instruction file. When a task matches an available skill in skills, read its path before proceeding."
-        : "Use this workspaceId in all subsequent tool calls for this project. Do not call open_workspace again for this same folder unless this workspaceId stops working, the user asks to reopen, or you switch to a different folder/worktree. Follow loaded agentsFiles instructions. Before working under a path listed in availableAgentsFiles, read that instruction file.";
+        ? "Use this workspaceId in all subsequent tool calls for this project. Do not call open_workspace again for this same folder unless this workspaceId stops working, the user asks to reopen, or you switch to a different folder/worktree. Follow loaded agentsFiles instructions. Before working under a path listed in availableAgentsFiles, read that instruction file. When a task matches an available skill in skills, read its path before proceeding. Plugin manifests describe optional local extensions; only use plugin tools if they are actually exposed by the MCP host."
+        : "Use this workspaceId in all subsequent tool calls for this project. Do not call open_workspace again for this same folder unless this workspaceId stops working, the user asks to reopen, or you switch to a different folder/worktree. Follow loaded agentsFiles instructions. Before working under a path listed in availableAgentsFiles, read that instruction file. Plugin manifests describe optional local extensions; only use plugin tools if they are actually exposed by the MCP host.";
       const resultContent: ToolContent[] = [
         {
           type: "text" as const,
@@ -817,6 +1065,7 @@ function createMcpServer(
             `Opened workspace ${workspace.id}`,
             `Root: ${workspace.root}`,
             `Mode: ${workspace.mode}`,
+            `Permission profile: ${config.permissionProfile}`,
             loadedAgentsFiles.length > 0
               ? `Loaded project instructions: ${loadedAgentsFiles.map((file) => file.path).join(", ")}`
               : undefined,
@@ -825,6 +1074,9 @@ function createMcpServer(
               : undefined,
             visibleSkills.length > 0
               ? `Available skills: ${visibleSkills.map((skill) => skill.name).join(", ")}`
+              : undefined,
+            visiblePlugins.length > 0
+              ? `Available plugin manifests: ${visiblePlugins.map((plugin) => plugin.name).join(", ")}`
               : undefined,
             visibleAgentProviders.some((provider) => provider.available)
               ? `Available subagent providers: ${visibleAgentProviders.filter((provider) => provider.available).map((provider) => provider.name).join(", ")}`
@@ -859,9 +1111,11 @@ function createMcpServer(
               agentsFiles: loadedAgentsFiles.length,
               availableAgentsFiles: availableAgentsFileOutputs.length,
               skills: visibleSkills.length,
+              plugins: visiblePlugins.length,
               agentProviders: visibleAgentProviders.length,
               agents: visibleAgents.length,
               skillDiagnostics: workspace.skillDiagnostics.length,
+              pluginDiagnostics: workspace.pluginDiagnostics.length,
             },
           },
         },
@@ -869,14 +1123,17 @@ function createMcpServer(
           workspaceId: workspace.id,
           root: workspace.root,
           mode: workspace.mode,
+          permissionProfile: config.permissionProfile,
           sourceRoot: workspace.sourceRoot,
           worktree: workspace.worktree,
           agentsFiles: loadedAgentsFiles,
           availableAgentsFiles: availableAgentsFileOutputs,
           skills: visibleSkills,
+          plugins: visiblePlugins,
           agentProviders: visibleAgentProviders,
           agents: visibleAgents,
           skillDiagnostics: workspace.skillDiagnostics,
+          pluginDiagnostics: workspace.pluginDiagnostics,
           instruction,
         },
       };
@@ -1581,6 +1838,10 @@ function createMcpServer(
 
   if (config.toolMode === "codex") {
     registerCodexProcessTools(server, config, workspaces, processSessions);
+  }
+
+  if (config.systemToolsEnabled) {
+    registerSystemDiagnosticTools(server, config, workspaces);
   }
 
   return server;

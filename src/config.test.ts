@@ -17,6 +17,18 @@ assert.equal(loadConfig({ ...baseEnv, DEVSPACE_WIDGETS: "changes" }).widgets, "c
 assert.equal(loadConfig({ ...baseEnv, DEVSPACE_WIDGETS: "full" }).widgets, "full");
 assert.equal(loadConfig({ ...baseEnv, DEVSPACE_WIDGETS: "off" }).widgets, "off");
 assert.equal(loadConfig(baseEnv).toolMode, "minimal");
+assert.equal(loadConfig(baseEnv).permissionProfile, "dev");
+assert.equal(loadConfig(baseEnv).systemToolsEnabled, false);
+assert.equal(loadConfig(baseEnv).processControlEnabled, false);
+assert.equal(loadConfig({ ...baseEnv, DEVSPACE_PERMISSION_PROFILE: "owner" }).processControlEnabled, false);
+assert.equal(loadConfig({ ...baseEnv, DEVSPACE_PERMISSION_PROFILE: "owner", DEVSPACE_PROCESS_CONTROL: "1" }).processControlEnabled, true);
+assert.equal(loadConfig({ ...baseEnv, DEVSPACE_PERMISSION_PROFILE: "power", DEVSPACE_PROCESS_CONTROL: "1" }).processControlEnabled, true);
+assert.equal(loadConfig({ ...baseEnv, DEVSPACE_PERMISSION_PROFILE: "safe" }).permissionProfile, "safe");
+assert.equal(loadConfig({ ...baseEnv, DEVSPACE_PERMISSION_PROFILE: "power" }).permissionProfile, "power");
+assert.equal(loadConfig({ ...baseEnv, DEVSPACE_PERMISSION_PROFILE: "power" }).systemToolsEnabled, true);
+assert.equal(loadConfig({ ...baseEnv, DEVSPACE_PERMISSION_PROFILE: "owner" }).permissionProfile, "owner");
+assert.equal(loadConfig({ ...baseEnv, DEVSPACE_SYSTEM_TOOLS: "1" }).systemToolsEnabled, true);
+assert.equal(loadConfig({ ...baseEnv, DEVSPACE_PERMISSION_PROFILE: "power", DEVSPACE_SYSTEM_TOOLS: "0" }).systemToolsEnabled, false);
 assert.equal(loadConfig({ ...baseEnv, DEVSPACE_TOOL_MODE: "minimal" }).toolMode, "minimal");
 assert.equal(loadConfig({ ...baseEnv, DEVSPACE_TOOL_MODE: "full" }).toolMode, "full");
 assert.equal(loadConfig({ ...baseEnv, DEVSPACE_TOOL_MODE: "codex" }).toolMode, "codex");
@@ -26,6 +38,10 @@ assert.equal(loadConfig(baseEnv).skillsEnabled, true);
 assert.equal(loadConfig(baseEnv).devspaceSkillsDir, join(emptyConfigDir, "skills"));
 assert.equal(loadConfig(baseEnv).devspaceAgentsDir, join(emptyConfigDir, "agents"));
 assert.equal(loadConfig(baseEnv).subagents, false);
+assert.equal(loadConfig(baseEnv).pluginsEnabled, true);
+assert.equal(loadConfig(baseEnv).devspacePluginsDir, join(emptyConfigDir, "plugins"));
+assert.equal(loadConfig({ ...baseEnv, DEVSPACE_PLUGINS: "0" }).pluginsEnabled, false);
+assert.equal(loadConfig({ ...baseEnv, DEVSPACE_PLUGINS: "1" }).pluginsEnabled, true);
 assert.equal(loadConfig({ ...baseEnv, DEVSPACE_SKILLS: "0" }).skillsEnabled, false);
 assert.equal(loadConfig({ ...baseEnv, DEVSPACE_SKILLS: "1" }).skillsEnabled, true);
 assert.equal(
@@ -59,6 +75,10 @@ assert.throws(
 assert.throws(
   () => loadConfig({ ...baseEnv, DEVSPACE_TOOL_MODE: "invalid" }),
   /Invalid DEVSPACE_TOOL_MODE: invalid/,
+);
+assert.throws(
+  () => loadConfig({ ...baseEnv, DEVSPACE_PERMISSION_PROFILE: "godmode" }),
+  /Invalid DEVSPACE_PERMISSION_PROFILE: godmode/,
 );
 
 assert.deepEqual(loadConfig(baseEnv).logging, {
@@ -163,6 +183,10 @@ writeFileSync(
     allowedRoots: [process.cwd()],
     publicBaseUrl: "https://devspace.example.com",
     subagents: true,
+    permissionProfile: "power",
+    skillPaths: ["/extra/skills"],
+    plugins: true,
+    pluginPaths: ["/extra/plugins"],
   }),
 );
 writeFileSync(
@@ -177,6 +201,10 @@ assert.equal(fileConfig.port, 8787);
 assert.equal(fileConfig.oauth.ownerToken, "persisted-owner-token-long-enough");
 assert.equal(fileConfig.publicBaseUrl, "https://devspace.example.com");
 assert.equal(fileConfig.subagents, true);
+assert.equal(fileConfig.permissionProfile, "power");
+assert.deepEqual(fileConfig.skillPaths, ["/extra/skills"]);
+assert.equal(fileConfig.pluginsEnabled, true);
+assert.deepEqual(fileConfig.pluginPaths, ["/extra/plugins"]);
 assert.deepEqual(fileConfig.allowedHosts, [
   "localhost",
   "127.0.0.1",

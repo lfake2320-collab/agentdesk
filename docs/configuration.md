@@ -38,6 +38,7 @@ npx @waishnav/devspace config set publicBaseUrl https://devspace.example.com
 | `DEVSPACE_OAUTH_OWNER_TOKEN` | Owner password for OAuth approval. Must be at least 16 characters. |
 | `DEVSPACE_WORKTREE_ROOT` | Directory for managed Git worktrees. Defaults to `~/.devspace/worktrees`. |
 | `DEVSPACE_STATE_DIR` | Directory for SQLite state. Defaults to `~/.local/share/devspace`. |
+| `DEVSPACE_PERMISSION_PROFILE` | Permission guidance profile: `safe`, `dev`, `power`, or `owner`. Defaults to `dev`. |
 
 ## OAuth
 
@@ -77,6 +78,55 @@ Codex-mode commands run without a PTY by default. Set `tty: true` on
 `node-pty` dependency; `write_stdin` can send input, poll output, and resize PTY
 sessions.
 
+## Permission Profiles
+
+`DEVSPACE_PERMISSION_PROFILE` tells MCP hosts how deeply they may use the exposed local workspace capabilities. It does not bypass OAuth, filesystem roots, or host-exposed tool boundaries; it is model-facing guidance for safer high-trust sessions.
+
+| Value | Intended use |
+| --- | --- |
+| `safe` | Inspection, review, low-risk edits, and read-heavy work. |
+| `dev` | Default. Normal project development: code edits, tests, builds, and git inspection. |
+| `power` | Deeper local diagnostics such as ports, Docker, browsers, databases, and services when the user asks. |
+| `owner` | Highest-trust owner session. Broad local maintenance is allowed, but destructive, credential-touching, or irreversible actions still need explicit confirmation. |
+
+For example:
+
+```bash
+DEVSPACE_PERMISSION_PROFILE=power npx @waishnav/devspace serve
+```
+
+## System Diagnostic Tools
+
+`DEVSPACE_SYSTEM_TOOLS` controls read-only local machine diagnostics. When unset, these tools are enabled only for `power` and `owner` permission profiles.
+
+| Tool | Purpose |
+| --- | --- |
+| `system_summary` | OS, Node.js, CPU, and memory summary. |
+| `system_proxy_status` | Proxy environment variables with credentials redacted. |
+| `system_ports` | Listening TCP ports, optionally filtered by port. |
+| `system_processes` | Local process list with optional query and result limit. |
+| `system_find_process` | Targeted process search before any process-control decision. |
+| `system_doctor` | Combined system, proxy, and port diagnostics. |
+
+All system diagnostic tools require a `workspaceId` from `open_workspace`. They do not write files, stop processes, change services, read secrets, or mutate global machine state.
+
+Examples:
+
+```bash
+DEVSPACE_PERMISSION_PROFILE=power DEVSPACE_SYSTEM_TOOLS=1 npx @waishnav/devspace serve
+DEVSPACE_PERMISSION_PROFILE=dev DEVSPACE_SYSTEM_TOOLS=0 npx @waishnav/devspace serve
+```
+
+### Process Control
+
+`DEVSPACE_PROCESS_CONTROL` exposes the destructive `system_kill_process_confirmed` tool. It is disabled by default and is only registered when `DEVSPACE_PERMISSION_PROFILE=owner` is active. The tool requires `confirmationPhrase` to exactly equal `KILL <pid>` and refuses to terminate the DevSpace server process or its parent process.
+
+Use process inspection first, then enable process control only for an explicit maintenance session:
+
+```bash
+DEVSPACE_PERMISSION_PROFILE=owner DEVSPACE_SYSTEM_TOOLS=1 DEVSPACE_PROCESS_CONTROL=1 npx @waishnav/devspace serve
+```
+
 ## Widgets
 
 `DEVSPACE_WIDGETS` controls ChatGPT Apps iframe usage.
@@ -95,6 +145,17 @@ sessions.
 | `DEVSPACE_SUBAGENTS` | Set to `1` to expose configured agent profiles as Subagents. Experimental and disabled by default. |
 | `DEVSPACE_AGENT_DIR` | Defaults to `~/.codex`; its `skills` child is loaded for compatibility. |
 | `DEVSPACE_SKILL_PATHS` | Optional comma-separated additional skill directories. |
+
+`~/.devspace/config.json` can also define `skillPaths` for persistent personal skill libraries:
+
+```json
+{
+  "skillPaths": [
+    "~/my-devspace-skills",
+    "D:/AI/skills"
+  ]
+}
+```
 
 DevSpace discovers standard Agent Skills from:
 
@@ -132,6 +193,51 @@ Example:
 ```bash
 DEVSPACE_SKILL_PATHS="$HOME/.claude/skills,$HOME/company/skills" \
 npx @waishnav/devspace serve
+```
+
+## Plugin Manifests
+
+DevSpace can discover plugin manifests and return them from `open_workspace` as capability metadata. This is a foundation for private extension systems: a manifest advertises a plugin's name, permissions, related skills, and expected tools. DevSpace does not execute plugin code from manifests by itself; actual tools must still be exposed by a trusted MCP host or adapter.
+
+| Variable | Purpose |
+| --- | --- |
+| `DEVSPACE_PLUGINS` | Set to `0` to hide plugin manifests. Enabled by default. |
+| `DEVSPACE_PLUGIN_PATHS` | Optional comma-separated additional plugin directories. |
+
+DevSpace discovers manifests from:
+
+- `~/.agents/plugins`
+- project `.agents/plugins`
+- `~/.devspace/plugins`
+- project `.devspace/plugins`
+- additional paths from `DEVSPACE_PLUGIN_PATHS`
+
+Each plugin directory may contain a `plugin.json` directly or child folders with their own `plugin.json` files.
+
+Example manifest:
+
+```json
+{
+  "name": "windows-tools",
+  "description": "Windows process, port, service, and PowerShell helpers.",
+  "version": "0.1.0",
+  "permissions": ["process:list", "process:kill", "network:ports"],
+  "skills": ["codex-repair"],
+  "tools": [
+    { "name": "windows_find_port", "description": "Find the process using a local port." }
+  ]
+}
+```
+
+A persistent personal setup can live in `~/.devspace/config.json`:
+
+```json
+{
+  "permissionProfile": "power",
+  "pluginPaths": ["~/my-devspace-plugins"],
+  "skillPaths": ["~/my-devspace-skills"],
+  "subagents": true
+}
 ```
 
 ## Logging

@@ -1,0 +1,38 @@
+{
+  "name": "windows-tools",
+  "description": "Windows process, port, service, PowerShell, proxy, and local environment helper capabilities.",
+  "version": "0.1.0",
+  "permissions": [
+    "process:list",
+    "process:kill:confirm",
+    "network:ports",
+    "shell:powershell",
+    "proxy:inspect"
+  ],
+  "skills": [
+    "codex-repair",
+    "docker-debug"
+  ],
+  "tools": [
+    {
+      "name": "windows_find_port",
+      "description": "Find the process using a local TCP port."
+    },
+    {
+      "name": "system_processes",
+      "description": "List local processes with optional filtering."
+    },
+    {
+      "name": "system_find_process",
+      "description": "Find a process by PID, name, command, or session."
+    },
+    {
+      "name": "system_kill_process_confirmed",
+      "description": "Stop a process after owner-profile opt-in and exact confirmation phrase."
+    },
+    {
+      "name": "windows_proxy_status",
+      "description": "Inspect common local proxy environment variables and ports."
+    }
+  ]
+}

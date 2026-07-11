@@ -19,6 +19,12 @@ export interface DevspaceUserConfig {
   worktreeRoot?: string;
   agentDir?: string;
   subagents?: boolean;
+  permissionProfile?: string;
+  skillPaths?: string[];
+  plugins?: boolean;
+  pluginPaths?: string[];
+  systemTools?: boolean;
+  processControl?: boolean;
 }
 
 export interface DevspaceAuthConfig {
@@ -53,6 +59,10 @@ export function devspaceSkillsDir(env: NodeJS.ProcessEnv = process.env): string 
 
 export function devspaceAgentsDir(env: NodeJS.ProcessEnv = process.env): string {
   return join(devspaceConfigDir(env), "agents");
+}
+
+export function devspacePluginsDir(env: NodeJS.ProcessEnv = process.env): string {
+  return join(devspaceConfigDir(env), "plugins");
 }
 
 export function loadDevspaceFiles(env: NodeJS.ProcessEnv = process.env): DevspaceFiles {
