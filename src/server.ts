@@ -52,8 +52,12 @@ import {
 } from "./system-tools.js";
 import {
   BrowserController,
+  browserAttachOnly,
+  browserProfileDirectory,
+  browserProfileMode,
   defaultBrowserDebugPort,
   defaultBrowserProfileDir,
+  defaultEdgeUserDataDir,
   formatBrowserSnapshot,
 } from "./browser-tools.js";
 import { formatPermissionProfileForPrompt } from "./permissions.js";
@@ -609,9 +613,14 @@ function registerBrowserControlTools(
   workspaces: WorkspaceRegistry,
 ): void {
   const workspaceIdSchema = z.string().describe("Workspace identifier returned by open_workspace. Required to tie browser automation to an authorized AgentDesk session.");
+  const browserMode = browserProfileMode();
   const browser = new BrowserController({
     profileDir: defaultBrowserProfileDir(config.stateDir),
     port: defaultBrowserDebugPort(),
+    mode: browserMode,
+    liveUserDataDir: defaultEdgeUserDataDir(),
+    profileDirectory: browserProfileDirectory(),
+    attachOnly: browserAttachOnly(),
   });
 
   registerAppTool(
@@ -619,7 +628,7 @@ function registerBrowserControlTools(
     "browser_start",
     {
       title: "Start browser",
-      description: "Start an isolated local Chromium browser session for user-authorized web automation. Requires owner profile, DEVSPACE_BROWSER_TOOLS=1, and an open workspaceId.",
+      description: "Start the controlled Edge/Chromium browser session. DEVSPACE_BROWSER_MODE=isolated uses an AgentDesk-only profile; DEVSPACE_BROWSER_MODE=live uses the configured Edge user profile and its existing login state. Requires owner profile, DEVSPACE_BROWSER_TOOLS=1, and an open workspaceId.",
       inputSchema: {
         workspaceId: workspaceIdSchema,
         url: z.string().optional().describe("Initial URL. Defaults to about:blank."),
@@ -634,7 +643,7 @@ function registerBrowserControlTools(
       workspaces.getWorkspace(workspaceId);
       try {
         const openedUrl = await browser.start(url ?? "about:blank", headless ?? false);
-        const result = `Browser session ready: ${openedUrl}`;
+        const result = `Browser session ready (${browserMode} mode): ${openedUrl}`;
         logToolCall(config, { tool: "browser_start", workspaceId, success: true, durationMs: Math.round(performance.now() - startedAt) });
         return { content: [textBlock(result)], structuredContent: { result } };
       } catch (error) {

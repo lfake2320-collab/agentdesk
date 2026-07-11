@@ -129,7 +129,16 @@ DEVSPACE_PERMISSION_PROFILE=owner DEVSPACE_SYSTEM_TOOLS=1 DEVSPACE_PROCESS_CONTR
 
 ## Browser Control Tools
 
-`DEVSPACE_BROWSER_TOOLS` exposes an isolated Chromium-compatible browser session through MCP. It is disabled by default and intended for explicit, user-authorized web automation such as opening a page, reading visible text, clicking buttons, and filling forms. It does not silently reuse your normal browser cookies unless you deliberately point `DEVSPACE_BROWSER_EXECUTABLE` and the profile configuration at a browser/profile you control.
+`DEVSPACE_BROWSER_TOOLS` exposes a Chromium-compatible browser session through MCP. It is disabled by default and intended for explicit, user-authorized web automation such as opening a page, reading visible text, clicking buttons, and filling forms.
+
+AgentDesk supports two browser profile modes:
+
+| Mode | Environment | Behavior |
+| --- | --- | --- |
+| `isolated` | `DEVSPACE_BROWSER_MODE=isolated` | Default. Starts Edge/Chromium with a separate AgentDesk profile under the AgentDesk state directory. This does not reuse normal login state. |
+| `live` | `DEVSPACE_BROWSER_MODE=live` | Uses the configured Edge user data directory and profile, so websites can see the login state already stored in that Edge profile. AgentDesk does not export or copy cookies; it drives the browser profile directly. |
+
+Edge is preferred by default. Set `DEVSPACE_BROWSER_EXECUTABLE` only if AgentDesk cannot find Edge automatically.
 
 | Tool | Purpose |
 | --- | --- |
@@ -138,19 +147,38 @@ DEVSPACE_PERMISSION_PROFILE=owner DEVSPACE_SYSTEM_TOOLS=1 DEVSPACE_PROCESS_CONTR
 | `browser_snapshot` | Read URL, title, visible text, and interactive elements. |
 | `browser_click` | Click by CSS selector or visible text. |
 | `browser_type` | Type into an input or editable element. |
-| `browser_close` | Close the controlled browser session. |
+| `browser_close` | Close the controlled browser session. In `live` mode it detaches instead of killing your main browser profile. |
 
-Example owner session:
+Safe isolated owner session:
 
 ```bash
-DEVSPACE_PERMISSION_PROFILE=owner DEVSPACE_BROWSER_TOOLS=1 npx agentdesk-mcp serve
+DEVSPACE_PERMISSION_PROFILE=owner DEVSPACE_BROWSER_TOOLS=1 DEVSPACE_BROWSER_MODE=isolated npx agentdesk-mcp serve
+```
+
+Live Edge profile session on Windows:
+
+```bash
+DEVSPACE_PERMISSION_PROFILE=owner \
+DEVSPACE_BROWSER_TOOLS=1 \
+DEVSPACE_BROWSER_MODE=live \
+DEVSPACE_BROWSER_EXECUTABLE="C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe" \
+DEVSPACE_BROWSER_USER_DATA_DIR="C:\\Users\\YOU\\AppData\\Local\\Microsoft\\Edge\\User Data" \
+DEVSPACE_BROWSER_PROFILE_DIRECTORY=Default \
+npx agentdesk-mcp serve
+```
+
+If Edge is already open and locks the same profile, close existing Edge windows first. Alternatively, start Edge yourself with a remote debugging port and set attach-only mode:
+
+```bash
+msedge.exe --remote-debugging-port=9222 --user-data-dir="C:\\Users\\YOU\\AppData\\Local\\Microsoft\\Edge\\User Data" --profile-directory=Default
+DEVSPACE_BROWSER_ATTACH_ONLY=1 DEVSPACE_BROWSER_MODE=live DEVSPACE_BROWSER_TOOLS=1 DEVSPACE_PERMISSION_PROFILE=owner npx agentdesk-mcp serve
 ```
 
 Optional browser configuration:
 
 ```bash
-DEVSPACE_BROWSER_EXECUTABLE="C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe"
 DEVSPACE_BROWSER_DEBUG_PORT=9222
+DEVSPACE_BROWSER_PROFILE_DIRECTORY=Default
 ```
 
 ## Widgets

@@ -5,10 +5,16 @@ import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import type { PermissionProfile } from "./permissions.js";
 
+export type BrowserProfileMode = "isolated" | "live";
+
 export interface BrowserToolOptions {
   profileDir: string;
   executablePath?: string;
   port?: number;
+  mode?: BrowserProfileMode;
+  liveUserDataDir?: string;
+  profileDirectory?: string;
+  attachOnly?: boolean;
 }
 
 export interface BrowserElementSummary {
@@ -61,6 +67,36 @@ export function defaultBrowserDebugPort(env: NodeJS.ProcessEnv = process.env): n
   return parsed;
 }
 
+export function browserProfileMode(env: NodeJS.ProcessEnv = process.env): BrowserProfileMode {
+  const raw = (env.DEVSPACE_BROWSER_MODE ?? env.AGENTDESK_BROWSER_MODE ?? "isolated").toLowerCase();
+  if (raw === "isolated" || raw === "live") return raw;
+  throw new Error(`Invalid DEVSPACE_BROWSER_MODE: ${raw}. Expected isolated or live.`);
+}
+
+export function defaultEdgeUserDataDir(env: NodeJS.ProcessEnv = process.env): string {
+  const configured = env.DEVSPACE_BROWSER_USER_DATA_DIR ?? env.AGENTDESK_BROWSER_USER_DATA_DIR;
+  if (configured) return configured;
+
+  const current = platform();
+  if (current === "win32") {
+    const localAppData = env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local");
+    return join(localAppData, "Microsoft", "Edge", "User Data");
+  }
+  if (current === "darwin") {
+    return join(homedir(), "Library", "Application Support", "Microsoft Edge");
+  }
+  return join(homedir(), ".config", "microsoft-edge");
+}
+
+export function browserProfileDirectory(env: NodeJS.ProcessEnv = process.env): string {
+  return env.DEVSPACE_BROWSER_PROFILE_DIRECTORY ?? env.AGENTDESK_BROWSER_PROFILE_DIRECTORY ?? "Default";
+}
+
+export function browserAttachOnly(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = env.DEVSPACE_BROWSER_ATTACH_ONLY ?? env.AGENTDESK_BROWSER_ATTACH_ONLY;
+  return raw === "1" || raw?.toLowerCase() === "true";
+}
+
 export function resolveBrowserExecutable(env: NodeJS.ProcessEnv = process.env): string {
   const configured = env.DEVSPACE_BROWSER_EXECUTABLE ?? env.AGENTDESK_BROWSER_EXECUTABLE;
   if (configured) return configured;
@@ -69,37 +105,44 @@ export function resolveBrowserExecutable(env: NodeJS.ProcessEnv = process.env): 
   const found = candidates.find((candidate) => existsSync(candidate));
   if (found) return found;
 
-  throw new Error(
-    "No supported browser executable found. Set DEVSPACE_BROWSER_EXECUTABLE to Chrome, Edge, or another Chromium-compatible browser.",
-  );
+  return platform() === "win32" ? "msedge.exe" : "microsoft-edge";
 }
 
 export class BrowserController {
   private readonly profileDir: string;
   private readonly executablePath?: string;
   private readonly port: number;
+  private readonly mode: BrowserProfileMode;
+  private readonly liveUserDataDir: string;
+  private readonly profileDirectory: string;
+  private readonly attachOnly: boolean;
   private process?: ChildProcessWithoutNullStreams;
   private pageWsUrl?: string;
 
   constructor(options: BrowserToolOptions) {
     this.profileDir = options.profileDir;
     this.executablePath = options.executablePath;
-    this.port = options.port ?? 9222;
+    this.port = options.port ?? defaultBrowserDebugPort();
+    this.mode = options.mode ?? browserProfileMode();
+    this.liveUserDataDir = options.liveUserDataDir ?? defaultEdgeUserDataDir();
+    this.profileDirectory = options.profileDirectory ?? browserProfileDirectory();
+    this.attachOnly = options.attachOnly ?? browserAttachOnly();
   }
 
   async start(url = "about:blank", headless = false): Promise<string> {
-    await mkdir(this.profileDir, { recursive: true });
+    if (this.attachOnly) {
+      await this.waitUntilReady();
+      const target = await this.firstPageTarget();
+      if (!target.webSocketDebuggerUrl) throw new Error("Attached browser has no debuggable page target.");
+      this.pageWsUrl = target.webSocketDebuggerUrl;
+      if (url && url !== "about:blank") await this.navigate(url);
+      return target.url ?? url;
+    }
+
+    await mkdir(this.activeUserDataDir(), { recursive: true });
     if (!this.process || this.process.killed) {
       const executable = this.executablePath ?? resolveBrowserExecutable();
-      const args = [
-        `--remote-debugging-port=${this.port}`,
-        `--user-data-dir=${this.profileDir}`,
-        "--no-first-run",
-        "--no-default-browser-check",
-        "--disable-background-networking",
-        ...(headless ? ["--headless=new", "--disable-gpu"] : []),
-        url,
-      ];
+      const args = this.launchArgs(url, headless);
       this.process = spawn(executable, args, {
         stdio: "pipe",
         windowsHide: false,
@@ -171,15 +214,38 @@ export class BrowserController {
   }
 
   async close(): Promise<void> {
-    if (this.process && !this.process.killed) {
+    if (this.mode === "isolated" && this.process && !this.process.killed) {
       this.process.kill();
     }
     this.process = undefined;
     this.pageWsUrl = undefined;
   }
 
+  private activeUserDataDir(): string {
+    return this.mode === "live" ? this.liveUserDataDir : this.profileDir;
+  }
+
+  private launchArgs(url: string, headless: boolean): string[] {
+    const args = [
+      `--remote-debugging-port=${this.port}`,
+      `--user-data-dir=${this.activeUserDataDir()}`,
+      "--no-first-run",
+      "--no-default-browser-check",
+      ...(headless ? ["--headless=new", "--disable-gpu"] : []),
+    ];
+    if (this.mode === "isolated") {
+      args.push("--disable-background-networking");
+    } else {
+      args.push(`--profile-directory=${this.profileDirectory}`);
+    }
+    args.push(url);
+    return args;
+  }
+
   private async ensurePageWsUrl(url = "about:blank"): Promise<string> {
-    if (!this.process || this.process.killed) {
+    if (this.attachOnly) {
+      await this.waitUntilReady();
+    } else if (!this.process || this.process.killed) {
       await this.start(url);
     }
     if (this.pageWsUrl) return this.pageWsUrl;
@@ -202,7 +268,10 @@ export class BrowserController {
       }
       await delay(150);
     }
-    throw new Error(`Browser debugging endpoint did not become ready: ${lastError instanceof Error ? lastError.message : "timeout"}`);
+    const modeHelp = this.mode === "live"
+      ? " In live mode, close existing Edge windows that already use the same profile, or start Edge yourself with --remote-debugging-port and set DEVSPACE_BROWSER_ATTACH_ONLY=1."
+      : "";
+    throw new Error(`Browser debugging endpoint did not become ready: ${lastError instanceof Error ? lastError.message : "timeout"}.${modeHelp}`);
   }
 
   private async firstPageTarget(): Promise<CdpTarget> {
@@ -363,9 +432,9 @@ function browserExecutableCandidates(): string[] {
   if (current === "win32") {
     const home = homedir();
     return [
-      join(home, "AppData", "Local", "Microsoft", "Edge", "Application", "msedge.exe"),
-      "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
       "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+      "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+      join(home, "AppData", "Local", "Microsoft", "Edge", "Application", "msedge.exe"),
       join(home, "AppData", "Local", "Google", "Chrome", "Application", "chrome.exe"),
       "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
       "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
@@ -373,12 +442,12 @@ function browserExecutableCandidates(): string[] {
   }
   if (current === "darwin") {
     return [
-      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
       "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
       "/Applications/Chromium.app/Contents/MacOS/Chromium",
     ];
   }
-  return ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/microsoft-edge"];
+  return ["/usr/bin/microsoft-edge", "/usr/bin/microsoft-edge-stable", "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser"];
 }
 
 function delay(ms: number): Promise<void> {

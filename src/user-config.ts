@@ -26,6 +26,9 @@ export interface DevspaceUserConfig {
   systemTools?: boolean;
   processControl?: boolean;
   browserTools?: boolean;
+  browserMode?: "isolated" | "live";
+  browserUserDataDir?: string;
+  browserProfileDirectory?: string;
 }
 
 export interface DevspaceAuthConfig {

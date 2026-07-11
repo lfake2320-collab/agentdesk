@@ -208,7 +208,35 @@ browser_type
 browser_close
 ```
 
-By default AgentDesk launches an isolated Chromium-compatible profile through Chrome DevTools Protocol. It does not silently reuse your normal browser cookies. Set `DEVSPACE_BROWSER_EXECUTABLE` when AgentDesk cannot find Edge or Chrome automatically.
+AgentDesk supports two browser modes:
+
+```text
+isolated  separate AgentDesk browser profile, no normal login state
+live      Microsoft Edge user profile, including that profile's existing login state
+```
+
+Edge is preferred by default. The normal safe mode is isolated:
+
+```powershell
+$env:DEVSPACE_PERMISSION_PROFILE="owner"
+$env:DEVSPACE_BROWSER_TOOLS="1"
+$env:DEVSPACE_BROWSER_MODE="isolated"
+agentdesk serve
+```
+
+For a fully open local-owner session that drives your signed-in Edge profile:
+
+```powershell
+$env:DEVSPACE_PERMISSION_PROFILE="owner"
+$env:DEVSPACE_BROWSER_TOOLS="1"
+$env:DEVSPACE_BROWSER_MODE="live"
+$env:DEVSPACE_BROWSER_EXECUTABLE="C:\Program Files\Microsoft\Edge\Application\msedge.exe"
+$env:DEVSPACE_BROWSER_USER_DATA_DIR="$env:LOCALAPPDATA\Microsoft\Edge\User Data"
+$env:DEVSPACE_BROWSER_PROFILE_DIRECTORY="Default"
+agentdesk serve
+```
+
+Live mode does not export or copy cookies. It launches or attaches to Edge with the selected user profile, so websites naturally see the login state stored in that profile. If Edge is already running and the profile is locked, close Edge first or start Edge manually with `--remote-debugging-port=9222` and set `DEVSPACE_BROWSER_ATTACH_ONLY=1`.
 
 ## Demo script for your README GIF
 
