@@ -4,6 +4,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$mutexCreated = $false
+$mutex = New-Object System.Threading.Mutex($true, "Local\AgentDeskNamedTunnelSupervisor", [ref]$mutexCreated)
+if (-not $mutexCreated) {
+  return
+}
+
 $ProjectRoot = "G:\devspace-copt-lab\devspace"
 $RuntimeDir = Join-Path $ProjectRoot ".agentdesk-fixed-runtime"
 $LogDir = Join-Path $RuntimeDir "logs"
