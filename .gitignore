@@ -3,3 +3,6 @@ dist/
 releases/
 .env
 *.log
+.agentdesk-gpt-runtime/
+.agentdesk-fixed-runtime/
+NUL
