@@ -91,7 +91,7 @@ Write-Host "Next step on this computer:" -ForegroundColor Yellow
 Write-Host "1. Open PowerShell in: $InstallRoot" -ForegroundColor Cyan
 Write-Host "2. Run: .\scripts\run-agentdesk-fixed.ps1" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "For fixed public access on a new computer, configure Cloudflare named tunnel credentials for agentdesk.husan.icu separately." -ForegroundColor Yellow
+Write-Host "For fixed public access on a new computer, configure Cloudflare named tunnel credentials for your own hostname separately." -ForegroundColor Yellow
 Write-Host "Owner token file: $ConfigDir\auth.json" -ForegroundColor Yellow
 Write-Host "File browser password file: $ConfigDir\file-browser-auth.json" -ForegroundColor Yellow
 '@

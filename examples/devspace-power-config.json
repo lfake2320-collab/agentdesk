@@ -1,18 +1,18 @@
 {
   "allowedRoots": [
-    "G:/Projects",
-    "C:/Users/23209/Documents"
+    "C:/Users/you/Projects/agentdesk",
+    "C:/Users/you/Documents/AgentDesk-Workspaces"
   ],
   "permissionProfile": "power",
   "systemTools": true,
   "processControl": false,
   "skillPaths": [
-    "C:/Users/23209/.devspace/skills",
-    "G:/AI/skills"
+    "C:/Users/you/.devspace/skills",
+    "D:/AI/skills"
   ],
   "pluginPaths": [
-    "C:/Users/23209/.devspace/plugins",
-    "G:/AI/devspace-plugins"
+    "C:/Users/you/.devspace/plugins",
+    "D:/AI/devspace-plugins"
   ],
   "subagents": true
 }

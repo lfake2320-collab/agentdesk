@@ -2,13 +2,20 @@ param(
   [int]$Port = 7866,
   [int]$BrowserDebugPort = 9333,
   [string]$EdgeProfile = "Default",
-  [string]$AllowedRoots = "G:\\devspace-copt-lab\\devspace,C:\\Users\\23209\\Documents,G:\\",
+  [string]$AllowedRoots = "",
   [switch]$NoTunnel
 )
 
 $ErrorActionPreference = "Stop"
 
-$ProjectRoot = "G:\devspace-copt-lab\devspace"
+$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+
+if (-not $AllowedRoots) {
+  $workspaceRoot = Join-Path (Join-Path $HOME "Documents") "AgentDesk-Workspaces"
+  New-Item -ItemType Directory -Force -Path $workspaceRoot | Out-Null
+  $AllowedRoots = @($ProjectRoot, $workspaceRoot) -join ","
+}
+
 $RuntimeDir = Join-Path $ProjectRoot ".agentdesk-gpt-runtime"
 $RunId = Get-Date -Format "yyyyMMdd-HHmmss"
 $TunnelLog = Join-Path $RuntimeDir "cloudflared-$Port-$RunId.log"

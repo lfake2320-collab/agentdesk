@@ -52,9 +52,15 @@ function main() {
 function defaults() {
   const setup = readJson(setupFile) ?? {};
   const docs = join(homedir(), "Documents");
+  const workspaceRoot = join(docs, "AgentDesk-Workspaces");
+  try {
+    mkdirSync(workspaceRoot, { recursive: true });
+  } catch {
+    // The setup page can still render; installation will report filesystem errors later if needed.
+  }
   const roots = Array.isArray(setup.allowedRoots) && setup.allowedRoots.length
     ? setup.allowedRoots
-    : [projectRoot, docs].filter(Boolean);
+    : [projectRoot, workspaceRoot].filter(Boolean);
 
   return {
     projectRoot,
@@ -72,6 +78,7 @@ function defaults() {
       allowedRoots: roots,
       enablePublicFileBrowser: setup.enablePublicFileBrowser ?? false,
       enableTunnel: setup.enableTunnel ?? false,
+      allowWideRoots: setup.allowWideRoots ?? false,
       tunnelName: setup.tunnelName ?? "agentdesk",
       tunnelId: setup.tunnelId ?? "",
       tunnelHostname: setup.tunnelHostname ?? "",
@@ -108,6 +115,7 @@ async function runInstall(input) {
     allowedRoots: cfg.allowedRoots,
     enablePublicFileBrowser: cfg.enablePublicFileBrowser,
     enableTunnel: cfg.enableTunnel,
+    allowWideRoots: cfg.allowWideRoots,
     tunnelName: cfg.tunnelName,
     tunnelId: cfg.tunnelId,
     tunnelHostname: cfg.tunnelHostname,
@@ -195,6 +203,11 @@ function normalizeConfig(input) {
     .map((item) => item.trim())
     .filter(Boolean);
   if (!allowedRoots.length) throw new Error("At least one allowed root is required.");
+  const allowWideRoots = Boolean(input.allowWideRoots);
+  const wideRoots = allowedRoots.filter(isWideAllowedRoot);
+  if (wideRoots.length && !allowWideRoots) {
+    throw new Error(`Allowed roots are too broad: ${wideRoots.join(", ")}. Use a specific project folder, or tick the wide-root acknowledgement checkbox if you really need this.`);
+  }
 
   const enableTunnel = Boolean(input.enableTunnel);
   const tunnelName = String(input.tunnelName || "agentdesk").trim();
@@ -218,6 +231,7 @@ function normalizeConfig(input) {
     allowedRoots,
     enablePublicFileBrowser: Boolean(input.enablePublicFileBrowser),
     enableTunnel,
+    allowWideRoots,
     tunnelName,
     tunnelId,
     tunnelHostname,
@@ -227,6 +241,15 @@ function normalizeConfig(input) {
     installDeps: input.installDeps !== false,
     build: input.build !== false,
   };
+}
+
+function isWideAllowedRoot(root) {
+  const value = String(root || "").trim();
+  if (!value) return false;
+  if (/^[A-Za-z]:[\\/]?$/.test(value)) return true;
+  if (value === "/") return true;
+  const normalizedHome = homedir().replace(/[\\/]+$/, "").toLowerCase();
+  return value.replace(/[\\/]+$/, "").toLowerCase() === normalizedHome;
 }
 
 function writeTunnelConfig(cfg) {
@@ -375,7 +398,8 @@ function pageHtml() {
     <section class="card full">
       <h2>3. 允许访问目录</h2>
       <textarea name="allowedRoots"></textarea>
-      <div class="hint">每行一个目录。AgentDesk 只能访问这些目录内的文件。</div>
+      <div class="hint">每行一个目录。默认只放当前 AgentDesk 项目和 Documents\\AgentDesk-Workspaces。不要填 C:\\、D:\\、G:\\ 这种整盘根目录，除非你明确知道风险。</div>
+      <label class="toggle"><input type="checkbox" name="allowWideRoots" /> 我知道风险，仍允许磁盘根目录 / 用户主目录作为 allowed roots</label>
     </section>
 
     <section class="card full">
@@ -387,7 +411,10 @@ function pageHtml() {
         <label>公网域名 Hostname</label><input name="tunnelHostname" placeholder="例如 agentdesk.example.com" />
         <label>credentials-file 路径</label><input name="tunnelCredentialsFile" placeholder="例如 C:\\Users\\you\\.cloudflared\\<tunnel-id>.json" />
       </div>
-      <div class="hint">没有 Cloudflare 凭据也可以先跳过，先用本机控制台。公网域名稍后再配。</div>
+      <div class="hint">
+        没有 Cloudflare 凭据也可以先跳过，先用本机控制台。公网域名稍后再配。<br />
+        小白填写顺序：先运行 <code>cloudflared tunnel create agentdesk</code> 得到 Tunnel ID；再在 <code>C:\\Users\\你\\.cloudflared</code> 找到同名 JSON 作为 credentials-file；最后把 DNS hostname 指到这个 tunnel。完整步骤见 <code>docs/cloudflare-tunnel.md</code>。
+      </div>
     </section>
 
     <section class="card full">

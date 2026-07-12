@@ -1,6 +1,7 @@
 param(
+  [string]$ProjectRoot = "",
   [string]$PublicBaseUrl = "",
-  [string]$AllowedRoots = "G:\\devspace-copt-lab\\devspace,C:\\Users\\23209\\Documents,G:\\",
+  [string]$AllowedRoots = "",
   [string]$EdgeProfile = "Default",
   [int]$Port = 7676,
   [int]$BrowserDebugPort = 9222
@@ -8,7 +9,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Set-Location -Path "G:\devspace-copt-lab\devspace"
+if (-not $ProjectRoot) {
+  $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+}
+$ProjectRoot = (Resolve-Path $ProjectRoot).Path
+Set-Location -Path $ProjectRoot
+
+if (-not $AllowedRoots) {
+  $workspaceRoot = Join-Path (Join-Path $HOME "Documents") "AgentDesk-Workspaces"
+  New-Item -ItemType Directory -Force -Path $workspaceRoot | Out-Null
+  $AllowedRoots = @($ProjectRoot, $workspaceRoot) -join ","
+}
 
 if (-not (Test-Path "dist\cli.js")) {
   Write-Host "dist\cli.js not found. Building AgentDesk first..." -ForegroundColor Yellow
@@ -26,7 +37,7 @@ if (-not (Test-Path $edgeExe)) {
 if (-not $PublicBaseUrl) {
   $PublicBaseUrl = "http://127.0.0.1:$Port"
   Write-Host "No public tunnel URL provided. Local MCP URL will be http://127.0.0.1:$Port/mcp" -ForegroundColor Yellow
-  Write-Host "For ChatGPT web, expose this with Cloudflare Tunnel/ngrok and rerun with -PublicBaseUrl https://your-tunnel.example.com" -ForegroundColor Yellow
+  Write-Host "For ChatGPT web, expose this with Cloudflare Tunnel/ngrok and rerun with -PublicBaseUrl https://agentdesk.example.com" -ForegroundColor Yellow
 }
 
 $env:PORT = "$Port"
@@ -44,12 +55,12 @@ $env:DEVSPACE_BROWSER_PROFILE_DIRECTORY = $EdgeProfile
 $env:DEVSPACE_BROWSER_DEBUG_PORT = "$BrowserDebugPort"
 $env:DEVSPACE_BROWSER_ATTACH_ONLY = "0"
 $env:DEVSPACE_PLUGINS = "1"
-$env:DEVSPACE_PLUGIN_PATHS = "G:\devspace-copt-lab\devspace\examples\plugins"
-$env:DEVSPACE_SKILL_PATHS = "G:\devspace-copt-lab\devspace\examples\skills"
+$env:DEVSPACE_PLUGIN_PATHS = Join-Path $ProjectRoot "examples\plugins"
+$env:DEVSPACE_SKILL_PATHS = Join-Path $ProjectRoot "examples\skills"
 
 Write-Host "Starting AgentDesk live Edge mode..." -ForegroundColor Green
 Write-Host "MCP URL: $PublicBaseUrl/mcp" -ForegroundColor Cyan
-Write-Host "Browser mode: live Edge profile '$EdgeProfile'" -ForegroundColor Cyan
+Write-Host "Browser mode: live Edge profile $EdgeProfile" -ForegroundColor Cyan
 Write-Host "Allowed roots: $AllowedRoots" -ForegroundColor Cyan
 Write-Host "Process control: disabled" -ForegroundColor Cyan
 

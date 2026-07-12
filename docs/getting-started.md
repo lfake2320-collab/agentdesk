@@ -1,107 +1,132 @@
 # Getting Started with AgentDesk
 
-This guide gets AgentDesk running as a local MCP server for ChatGPT, Claude, or another MCP-capable host.
+This guide is for users who want to run AgentDesk as a local MCP server for ChatGPT, Claude, or another MCP-capable host.
+
+For the complete Windows beginner path, read:
+
+```text
+docs/first-clone-windows.md
+```
 
 ## Requirements
 
+- Windows 10/11 recommended
+- Git
 - Node.js `>=22.19 <27`
 - npm
-- Git
-- A shell available to your environment
-- A public HTTPS tunnel if your MCP host cannot connect to `localhost`
+- PowerShell
+- Optional: `cloudflared` for public HTTPS access from ChatGPT web
 
-On Windows, AgentDesk is designed to be PowerShell-friendly, but it still inherits some upstream DevSpace shell behavior. Git Bash or WSL can still be useful for project commands.
+Check versions:
 
-## Install
-
-```bash
-npm install -g agentdesk-mcp
-agentdesk init
-agentdesk serve
+```powershell
+git --version
+node -v
+npm -v
 ```
 
-For local development:
+## Install from GitHub source
 
-```bash
-git clone https://github.com/YOUR_GITHUB_USERNAME/agentdesk.git
+```powershell
+git clone https://github.com/lfake2320-collab/agentdesk.git
 cd agentdesk
 npm install
 npm run build
-node dist/cli.js init
-node dist/cli.js serve
+```
+
+Run the fresh-clone verifier:
+
+```powershell
+.\scripts\verify-first-clone.ps1 -SkipTests
+```
+
+Open the first-run setup wizard:
+
+```powershell
+Start-AgentDesk.cmd
+```
+
+The wizard opens at:
+
+```text
+http://127.0.0.1:7876/
+```
+
+## Default local addresses
+
+After setup, AgentDesk normally uses:
+
+```text
+Local console: http://127.0.0.1:7875/console
+Health check:   http://127.0.0.1:7875/healthz
+Local MCP:      http://127.0.0.1:7875/mcp
 ```
 
 ## Choose allowed roots
 
-Allowed roots define where ChatGPT may open workspaces.
+Allowed roots define where ChatGPT may open local workspaces.
 
 Good examples:
 
 ```text
-C:\Users\you\Projects
-G:\Projects
-D:\Code
+C:\Users\you\Documents\AgentDesk-Workspaces
+G:\Projects\one-project
+D:\Code\agentdesk-test
 ```
 
-Bad examples:
+Avoid broad roots:
 
 ```text
 C:\
+D:\
+G:\
 C:\Users\you
 /
 ~
 ```
 
-Keep roots narrow. AgentDesk is remote access to your development machine.
+The setup wizard defaults to the current AgentDesk repo plus:
 
-## Permission profiles
-
-Use `dev` for normal work:
-
-```powershell
-$env:DEVSPACE_PERMISSION_PROFILE="dev"
-agentdesk serve
+```text
+Documents\AgentDesk-Workspaces
 ```
 
-Use `power` for diagnostics:
+If you add a whole drive root, the wizard requires an explicit risk acknowledgement.
 
-```powershell
-$env:DEVSPACE_PERMISSION_PROFILE="power"
-$env:DEVSPACE_SYSTEM_TOOLS="1"
-agentdesk serve
-```
-
-Use `owner` only for short, explicit maintenance sessions:
-
-```powershell
-$env:DEVSPACE_PERMISSION_PROFILE="owner"
-$env:DEVSPACE_SYSTEM_TOOLS="1"
-$env:DEVSPACE_PROCESS_CONTROL="1"
-agentdesk serve
-```
-
-## Connect MCP
+## Connect a remote MCP host
 
 Local endpoint:
 
 ```text
-http://127.0.0.1:7676/mcp
+http://127.0.0.1:7875/mcp
 ```
 
-Remote tunnel endpoint:
+ChatGPT web usually needs public HTTPS. Use Cloudflare Tunnel or another tunnel you trust:
 
 ```text
-https://your-tunnel-host.example.com/mcp
+https://your-domain.example.com/mcp
 ```
 
-When the MCP host connects, AgentDesk uses an Owner password approval page. Keep the Owner password private.
+Cloudflare guide:
+
+```text
+docs/cloudflare-tunnel.md
+```
+
+Inside the setup wizard, `Public Base URL` should be the origin only:
+
+```text
+https://your-domain.example.com
+```
+
+Do not include `/mcp` there.
 
 ## First useful prompt
 
 After connecting AgentDesk to ChatGPT, try:
 
 ```text
-Open my project workspace and diagnose why localhost:8080 is not responding. Check ports, processes, proxy settings, and project scripts before suggesting a fix.
+@AgentDesk Open my project workspace and diagnose why localhost:8080 is not responding. Check ports, processes, proxy settings, and project scripts before suggesting a fix.
 ```
 
 Expected behavior:
@@ -112,28 +137,37 @@ Expected behavior:
 4. It explains the likely cause.
 5. It asks for explicit confirmation before any destructive action.
 
-## Troubleshooting
+## CLI / package usage
 
-Run typecheck and build from source:
+Global package usage is still supported:
 
 ```bash
+npm install -g agentdesk-mcp
+agentdesk init
+agentdesk serve
+```
+
+The source-clone wizard path is recommended for Windows testers because it configures the fixed `7875` line, first-run setup, and hidden scheduled tasks.
+
+## Troubleshooting
+
+Run:
+
+```powershell
 npm run typecheck
 npm run build
+npm test
 ```
 
 If MCP cannot connect:
 
 - Confirm AgentDesk is running.
-- Confirm the `/mcp` URL is correct.
-- Confirm your public tunnel points to `http://127.0.0.1:7676`.
-- Confirm `DEVSPACE_PUBLIC_BASE_URL` matches the public origin, without `/mcp`.
-- Confirm the Owner password approval flow completed.
+- Confirm `http://127.0.0.1:7875/healthz` returns 200.
+- Confirm your public tunnel points to `http://127.0.0.1:7875`.
+- Confirm `Public Base URL` matches the public origin without `/mcp`.
+- Confirm the OAuth Owner Token approval flow completed.
 
-If a port is occupied:
-
-```text
-Ask AgentDesk to call system_ports with the target port.
-```
+If a port is occupied, ask AgentDesk to call `system_ports` with that port.
 
 If process control is unavailable:
 

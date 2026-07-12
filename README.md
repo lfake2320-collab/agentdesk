@@ -1,338 +1,193 @@
 # AgentDesk
 
-> Turn ChatGPT into your local Windows-first engineering copilot.
+> Turn ChatGPT into a Windows-first local engineering copilot.
 
-AgentDesk is a Windows-first fork of DevSpace that gives ChatGPT, Claude, and other MCP-capable hosts a secure connection to your local development machine. It keeps the DevSpace local workspace model, then adds practical local diagnostics for Windows developers: ports, processes, proxy settings, system summaries, personal Skill Packs, plugin manifests, and permission profiles.
+AgentDesk connects ChatGPT, Claude, or another MCP-capable host to your local Windows development machine. It can read and edit approved project folders, run tests and builds, inspect ports and processes, check proxy settings, and help diagnose broken localhost/dev-server problems.
 
-<p align="center">
-  <strong>ChatGPT should not just write code. It should understand why your localhost, proxy, Docker, Codex, or dev server is broken.</strong>
-</p>
+中文文档见：[README.zh-CN.md](README.zh-CN.md)。
 
-## Why AgentDesk?
+## Start here if you just cloned the repo
 
-DevSpace brings a Codex-style coding workflow to ChatGPT. AgentDesk goes further for everyday Windows and local-development troubleshooting.
-
-| Pain | AgentDesk answer |
-| --- | --- |
-| “Why is localhost:8080 not working?” | Inspect listening ports and map them to PIDs. |
-| “Why does Codex / MCP reconnect?” | Check Node, proxy, ports, and local process state. |
-| “Which process is holding my port?” | Use `system_ports`, `system_processes`, and `system_find_process`. |
-| “Can ChatGPT use my own workflow?” | Load personal Skill Packs from configurable directories. |
-| “Can I add my own tools?” | Advertise plugin manifests and build trusted MCP tool adapters. |
-| “Isn’t this dangerous?” | Use permission profiles and confirmation-gated process control. |
-
-## Highlights
-
-- **Windows-first local diagnostics**: system summary, proxy status, listening ports, process search, and controlled process termination.
-- **Permission profiles**: `safe`, `dev`, `power`, and `owner` guide how deeply the host model may operate.
-- **Personal Skill Packs**: load your own repeatable workflows for Codex repair, Docker debugging, YOLO projects, PyQt apps, papers, and more.
-- **Plugin manifest system**: advertise local capabilities without blindly executing unknown plugin code.
-- **MCP workspace server**: read, edit, search, write, run tests, and inspect real local projects through approved roots.
-- **Controlled browser automation**: optional isolated Chromium session for opening pages, reading snapshots, clicking, and typing without stealing normal browser cookies by default.
-- **Safer defaults**: powerful tools are opt-in, browser control is opt-in, process control is off unless explicitly enabled, and destructive actions require confirmation phrases.
-
-## What is new compared with upstream DevSpace?
-
-AgentDesk is based on `Waishnav/devspace`, but focuses on a different user story: local Windows engineering support and personal automation.
-
-| Area | DevSpace | AgentDesk |
-| --- | --- | --- |
-| Core MCP workspace | Yes | Yes |
-| File read/edit/search/write | Yes | Yes |
-| Shell tools | Yes | Yes |
-| Permission profiles | No | Yes: `safe/dev/power/owner` |
-| Plugin manifests | No | Yes |
-| Personal Skill Pack examples | Limited | Yes |
-| System diagnostics | No | Yes |
-| Port/process diagnosis | No | Yes |
-| Confirmation-gated process kill | No | Yes, owner-only and opt-in |
-| Controlled browser automation | No | Yes, owner-only and opt-in |
-| Windows-first positioning | Partial | Primary focus |
-
-## Quick start
-
-AgentDesk requires Node.js `>=22.19 <27`.
-
-### Windows first-run setup wizard
-
-For non-technical Windows users, clone the repository and double-click:
+For a first Windows install, use the beginner guide:
 
 ```text
+docs/first-clone-windows.md
+```
+
+Shortest path:
+
+```powershell
+git clone https://github.com/lfake2320-collab/agentdesk.git
+cd agentdesk
+npm install
+npm run build
 Start-AgentDesk.cmd
 ```
 
-It opens a local setup page at:
+`Start-AgentDesk.cmd` opens the first-run setup wizard at:
 
 ```text
 http://127.0.0.1:7876/
 ```
 
-The wizard can configure everything from a browser page: local port, MCP public URL, allowed folders, owner token, file-browser password, optional Cloudflare Tunnel settings, build, hidden startup tasks, and first launch.
-
-After installation, the local control center is:
+After setup, AgentDesk normally runs at:
 
 ```text
-http://127.0.0.1:7875/console
+Local console: http://127.0.0.1:7875/console
+Health check:   http://127.0.0.1:7875/healthz
+Local MCP:      http://127.0.0.1:7875/mcp
 ```
 
-### CLI / package usage
-
-```bash
-npm install -g agentdesk-mcp
-agentdesk init
-agentdesk serve
-```
-
-For manual local development from this repository:
-
-```bash
-git clone https://github.com/lfake2320-collab/agentdesk.git
-cd agentdesk
-npm install
-npm run build
-node dist/cli.js init
-node dist/cli.js serve
-```
-
-The default local MCP endpoint is:
-
-```text
-http://127.0.0.1:7676/mcp
-```
-
-For ChatGPT or another remote MCP host, expose the server through a tunnel you control, then connect to:
-
-```text
-https://your-tunnel-host.example.com/mcp
-```
-
-Keep your Owner password private. AgentDesk is remote access to your development machine.
-
-## Recommended Windows power setup
-
-For deeper diagnostics without enabling destructive process control:
+To verify a fresh clone before opening the wizard:
 
 ```powershell
-$env:DEVSPACE_PERMISSION_PROFILE="power"
-$env:DEVSPACE_SYSTEM_TOOLS="1"
-$env:DEVSPACE_TOOL_MODE="full"
-agentdesk serve
+.\scripts\verify-first-clone.ps1 -SkipTests
 ```
 
-For owner-only process control, enable it explicitly:
+## Connecting ChatGPT
 
-```powershell
-$env:DEVSPACE_PERMISSION_PROFILE="owner"
-$env:DEVSPACE_SYSTEM_TOOLS="1"
-$env:DEVSPACE_PROCESS_CONTROL="1"
-$env:DEVSPACE_TOOL_MODE="full"
-agentdesk serve
-```
+ChatGPT web cannot normally reach your computer's `127.0.0.1`, so use a public HTTPS tunnel such as Cloudflare Tunnel.
 
-`system_kill_process_confirmed` still requires an exact confirmation phrase such as:
+Cloudflare step-by-step guide:
 
 ```text
-KILL 1234
+docs/cloudflare-tunnel.md
 ```
 
-AgentDesk refuses to kill its own process or its parent process.
+In ChatGPT's MCP / connector settings, use:
 
-## MCP tools added by AgentDesk
+```text
+Name: AgentDesk
+Server URL: https://your-domain.example.com/mcp
+Auth: OAuth
+```
 
-The system tools are exposed only when system tools are enabled. By default, that means `power` and `owner` profiles.
+Do not put `/mcp` into `Public Base URL` inside the setup wizard. The wizard wants the origin only, for example:
 
-| Tool | Purpose | Risk |
-| --- | --- | --- |
-| `system_summary` | OS, Node.js, CPU, and memory summary. | Read-only |
-| `system_proxy_status` | Proxy environment variables with credentials redacted. | Read-only |
-| `system_ports` | Listening TCP ports, optionally filtered by port. | Read-only |
-| `system_doctor` | Combined system, proxy, port, and process diagnostics. | Read-only |
-| `system_processes` | List local processes. | Read-only |
-| `system_find_process` | Search by PID, name, command, or session. | Read-only |
-| `system_kill_process_confirmed` | Terminate a PID after explicit confirmation. | Owner-only, opt-in |
+```text
+https://agentdesk.example.com
+```
 
-## Permission profiles
+## Safer default workspace folders
 
-| Profile | Recommended use |
+AgentDesk can only access folders listed in `allowed roots`.
+
+Good:
+
+```text
+C:\Users\you\Documents\AgentDesk-Workspaces
+D:\Code\one-project
+G:\devspace-copt-lab\devspace
+```
+
+Avoid whole drives or home folders:
+
+```text
+C:\
+D:\
+G:\
+C:\Users\you
+```
+
+The first-run wizard defaults to the current AgentDesk folder plus:
+
+```text
+Documents\AgentDesk-Workspaces
+```
+
+If you deliberately add a drive root, the wizard requires an explicit risk acknowledgement.
+
+## What AgentDesk adds beyond upstream DevSpace
+
+| Area | AgentDesk |
 | --- | --- |
-| `safe` | Review, inspection, low-risk edits. |
-| `dev` | Normal coding, tests, builds, and git inspection. |
-| `power` | Local diagnostics for ports, processes, proxy, Docker, browsers, and services. |
-| `owner` | Highest-trust maintenance sessions; destructive actions still need explicit confirmation. |
+| Local MCP workspace | Read, search, edit, write, and run commands in approved roots |
+| Windows diagnostics | System summary, proxy status, ports, processes, doctor checks |
+| Permission profiles | `safe`, `dev`, `power`, `owner` |
+| Process control | Owner-only, opt-in, exact confirmation phrase required |
+| Browser tools | Optional isolated/live Edge automation |
+| First-run setup | Browser wizard launched by `Start-AgentDesk.cmd` |
+| Public access | Optional Cloudflare named tunnel scripts |
+| Startup | Hidden Windows scheduled tasks |
+| Packaging | Release zip script and release checklist |
 
-Set a profile with:
-
-```bash
-DEVSPACE_PERMISSION_PROFILE=power agentdesk serve
-```
-
-## Personal Skill Packs
-
-AgentDesk can load skills from multiple locations:
-
-```text
-~/.agents/skills
-project/.agents/skills
-~/.devspace/skills
-DEVSPACE_AGENT_DIR/skills
-DEVSPACE_SKILL_PATHS
-```
-
-Example:
+## Useful commands
 
 ```powershell
-$env:DEVSPACE_SKILL_PATHS="C:\Users\you\.devspace\skills,G:\AI\skills"
-agentdesk serve
+npm test
+npm run typecheck
+npm run build
+npm run verify:first-clone
+npm run release:zip
 ```
 
-A skill is a `SKILL.md` file that teaches the model your preferred workflow. This repository includes an example:
-
-```text
-examples/skills/codex-repair/SKILL.md
-```
-
-## Plugin manifests
-
-AgentDesk can discover plugin manifests from:
-
-```text
-~/.agents/plugins
-project/.agents/plugins
-~/.devspace/plugins
-project/.devspace/plugins
-DEVSPACE_PLUGIN_PATHS
-```
-
-Example plugin manifest:
-
-```text
-examples/plugins/windows-tools/plugin.json
-```
-
-Plugin manifests are capability metadata. AgentDesk does not blindly execute arbitrary plugin code from `plugin.json`; actual executable tools must be implemented by a trusted MCP host or adapter.
-
-## Controlled browser automation
-
-AgentDesk can expose browser-control tools when you explicitly enable them:
+Create a Windows source release zip:
 
 ```powershell
-$env:DEVSPACE_PERMISSION_PROFILE="owner"
-$env:DEVSPACE_BROWSER_TOOLS="1"
-agentdesk serve
+.\scripts\create-release-zip.ps1 -Version 0.1.0
 ```
 
-This registers:
+Release checklist:
 
 ```text
-browser_start
-browser_navigate
-browser_snapshot
-browser_click
-browser_type
-browser_close
+docs/release-checklist.md
 ```
-
-AgentDesk supports two browser modes:
-
-```text
-isolated  separate AgentDesk browser profile, no normal login state
-live      Microsoft Edge user profile, including that profile's existing login state
-```
-
-Edge is preferred by default. The normal safe mode is isolated:
-
-```powershell
-$env:DEVSPACE_PERMISSION_PROFILE="owner"
-$env:DEVSPACE_BROWSER_TOOLS="1"
-$env:DEVSPACE_BROWSER_MODE="isolated"
-agentdesk serve
-```
-
-For a fully open local-owner session that drives your signed-in Edge profile:
-
-```powershell
-$env:DEVSPACE_PERMISSION_PROFILE="owner"
-$env:DEVSPACE_BROWSER_TOOLS="1"
-$env:DEVSPACE_BROWSER_MODE="live"
-$env:DEVSPACE_BROWSER_EXECUTABLE="C:\Program Files\Microsoft\Edge\Application\msedge.exe"
-$env:DEVSPACE_BROWSER_USER_DATA_DIR="$env:LOCALAPPDATA\Microsoft\Edge\User Data"
-$env:DEVSPACE_BROWSER_PROFILE_DIRECTORY="Default"
-agentdesk serve
-```
-
-Live mode does not export or copy cookies. It launches or attaches to Edge with the selected user profile, so websites naturally see the login state stored in that profile. If Edge is already running and the profile is locked, close Edge first or start Edge manually with `--remote-debugging-port=9222` and set `DEVSPACE_BROWSER_ATTACH_ONLY=1`.
-
-## Demo script for your README GIF
-
-Use this scenario for a short GIF or video:
-
-```text
-User: Why is my localhost:8080 not working?
-AgentDesk:
-1. Opens the project workspace.
-2. Calls system_ports with port=8080.
-3. Finds the listening PID.
-4. Calls system_find_process for that PID.
-5. Explains which process owns the port.
-6. In owner mode only, asks for confirmation before killing the PID.
-```
-
-Put the GIF under:
-
-```text
-docs/assets/agentdesk-demo.gif
-```
-
-Then add it near the top of this README.
 
 ## Documentation
 
+- [Windows first clone guide](docs/first-clone-windows.md)
+- [Cloudflare Tunnel guide](docs/cloudflare-tunnel.md)
+- [Release checklist](docs/release-checklist.md)
 - [Getting Started](docs/getting-started.md)
-- [Star Roadmap](docs/star-roadmap.md)
-- [Demo Script](docs/demo-script.md)
 - [Configuration Reference](docs/configuration.md)
+- [ChatGPT Setup](docs/chatgpt-setup.md)
 - [Security](SECURITY.md)
 - [Changelog](CHANGELOG.md)
 
-## Safety model
+## Example prompt
 
-AgentDesk exposes local development capabilities over MCP. Treat it as remote access to your computer.
-
-Use narrow allowed roots:
+After connecting AgentDesk to ChatGPT, try:
 
 ```text
-Good: C:\Users\you\Projects
-Bad:  C:\
-Bad:  C:\Users\you
+@AgentDesk Open my project workspace and diagnose why localhost:8080 is not responding. Check ports, processes, proxy settings, and project scripts before suggesting a fix.
 ```
 
-Recommended rules:
+Expected flow:
 
-- Keep the Owner password private.
-- Do not expose AgentDesk directly to the public internet without authentication and a tunnel/proxy you trust.
-- Use `power` for diagnostics and reserve `owner` for short, explicit maintenance sessions.
-- Keep `DEVSPACE_PROCESS_CONTROL=0` unless you specifically need confirmed process termination.
-- Never share logs that may include local paths, commands, or project names unless you review them first.
+```text
+1. Open workspace.
+2. Inspect package scripts and config.
+3. Check listening ports.
+4. Map the port to a process.
+5. Explain the cause.
+6. Ask before any risky action.
+```
 
-## Roadmap
+## Safety model
 
-- [x] Permission profiles: `safe`, `dev`, `power`, `owner`
-- [x] Plugin manifest discovery
-- [x] Personal Skill Pack examples
-- [x] System summary and proxy diagnostics
-- [x] Port and process diagnostics
-- [x] Confirmation-gated process termination
-- [ ] Docker diagnostics: containers, logs, compose status
-- [ ] Codex repair doctor: config, proxy, MCP, local runtime checks
-- [ ] Browser diagnostics: open page, screenshot localhost, check status
-- [ ] Plugin execution adapter for trusted local extensions
-- [ ] Windows-friendly installer and doctor wizard
+AgentDesk is remote access to your development machine. Keep allowed roots narrow, keep the Owner Token private, and expose it only through a tunnel/proxy you trust.
+
+Process termination requires all of these:
+
+```text
+DEVSPACE_PERMISSION_PROFILE=owner
+DEVSPACE_PROCESS_CONTROL=1
+Exact confirmation phrase: KILL <pid>
+```
+
+AgentDesk refuses to terminate its own process or parent process.
+
+## Status
+
+Current status: `v0.1.0 Windows-first Preview`.
+
+This is ready for clone-and-test workflows, but it is still a preview rather than a polished commercial installer.
 
 ## Credits
 
-AgentDesk is based on [Waishnav/devspace](https://github.com/Waishnav/devspace), an excellent self-hosted MCP workspace server that brings Codex-style local coding workflows to ChatGPT and Claude.
+AgentDesk is based on [Waishnav/devspace](https://github.com/Waishnav/devspace), an excellent self-hosted MCP workspace server for ChatGPT and Claude.
 
-This fork keeps the original MIT license and credits the upstream work. AgentDesk focuses on Windows-first local diagnostics, permission profiles, personal skills, and plugin-driven automation.
+This fork focuses on Windows-first diagnostics, first-run setup, safer local workflows, personal skills, and plugin-oriented automation.
 
 ## License
 

@@ -10,6 +10,7 @@ export default defineConfig({
     outDir: resolve(__dirname, "dist/ui"),
     emptyOutDir: true,
     manifest: true,
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       input: resolve(__dirname, "src/ui/workspace-app.html"),
       output: {

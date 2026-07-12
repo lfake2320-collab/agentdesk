@@ -2,7 +2,7 @@ param(
   [string]$ProjectRoot = "",
   [int]$Port = 7875,
   [int]$BrowserDebugPort = 9342,
-  [string]$PublicBaseUrl = "https://agentdesk.husan.icu",
+  [string]$PublicBaseUrl = "http://127.0.0.1:7875",
   [string]$EdgeProfile = "Default",
   [string]$AllowedRoots = "",
   [bool]$EnablePublicFileBrowser = $true
@@ -42,11 +42,9 @@ if (Test-Path $SetupFile) {
 }
 
 if (-not $AllowedRoots) {
-  $defaultRoots = @($ProjectRoot)
-  $documents = Join-Path $HOME "Documents"
-  if (Test-Path $documents) { $defaultRoots += $documents }
-  if (Test-Path "G:\") { $defaultRoots += "G:\" }
-  $AllowedRoots = ($defaultRoots | Select-Object -Unique) -join ","
+  $workspaceRoot = Join-Path (Join-Path $HOME "Documents") "AgentDesk-Workspaces"
+  New-Item -ItemType Directory -Force -Path $workspaceRoot | Out-Null
+  $AllowedRoots = @($ProjectRoot, $workspaceRoot) -join ","
 }
 
 $mutexCreated = $false
