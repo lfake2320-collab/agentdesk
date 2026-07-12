@@ -69,6 +69,7 @@ import {
   getLocalAgentProviderAvailabilitySnapshot,
   type LocalAgentProviderAvailability,
 } from "./local-agent-availability.js";
+import { registerControlConsoleRoutes } from "./control-console.js";
 import { registerFileBrowserRoutes } from "./file-browser.js";
 
 type Transport = StreamableHTTPServerTransport;
@@ -2152,6 +2153,7 @@ export function createServer(config = loadConfig()): RunningServer {
   );
 
   registerFileBrowserRoutes(app, config);
+  registerControlConsoleRoutes(app, config);
 
   app.get("/healthz", (_req, res) => {
     res.json({ ok: true, name: "devspace" });
