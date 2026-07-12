@@ -1,30 +1,61 @@
 param(
+  [string]$ProjectRoot = "",
   [int]$Port = 7875,
   [int]$BrowserDebugPort = 9342,
   [string]$PublicBaseUrl = "https://agentdesk.husan.icu",
   [string]$EdgeProfile = "Default",
-  [string]$AllowedRoots = "G:\\devspace-copt-lab\\devspace,C:\\Users\\23209\\Documents,G:\\"
+  [string]$AllowedRoots = "",
+  [bool]$EnablePublicFileBrowser = $true
 )
 
 $ErrorActionPreference = "Stop"
 
-$mutexCreated = $false
-$mutex = New-Object System.Threading.Mutex($true, "Local\AgentDeskFixedMcpSupervisor", [ref]$mutexCreated)
-if (-not $mutexCreated) {
-  return
+if (-not $ProjectRoot) {
+  $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 }
+$ProjectRoot = (Resolve-Path $ProjectRoot).Path
 
-$ProjectRoot = "G:\devspace-copt-lab\devspace"
 $RuntimeDir = Join-Path $ProjectRoot ".agentdesk-fixed-runtime"
 $StateDir = Join-Path $RuntimeDir "state"
 $ConfigDir = Join-Path $RuntimeDir "config"
 $LogDir = Join-Path $RuntimeDir "logs"
+$SetupFile = Join-Path $RuntimeDir "setup.json"
 $AuthFile = Join-Path $ConfigDir "auth.json"
 $FileBrowserAuthFile = Join-Path $ConfigDir "file-browser-auth.json"
 $AgentDeskLog = Join-Path $LogDir "agentdesk-fixed.log"
 $SupervisorLog = Join-Path $LogDir "agentdesk-fixed-supervisor.log"
 
 New-Item -ItemType Directory -Force -Path $RuntimeDir, $StateDir, $ConfigDir, $LogDir | Out-Null
+
+if (Test-Path $SetupFile) {
+  try {
+    $setup = Get-Content $SetupFile -Raw | ConvertFrom-Json
+    if ($setup.port) { $Port = [int]$setup.port }
+    if ($setup.browserDebugPort) { $BrowserDebugPort = [int]$setup.browserDebugPort }
+    if ($setup.publicBaseUrl) { $PublicBaseUrl = [string]$setup.publicBaseUrl }
+    if ($setup.edgeProfile) { $EdgeProfile = [string]$setup.edgeProfile }
+    if ($null -ne $setup.enablePublicFileBrowser) { $EnablePublicFileBrowser = [bool]$setup.enablePublicFileBrowser }
+    if ($setup.allowedRoots) { $AllowedRoots = (($setup.allowedRoots | ForEach-Object { [string]$_ }) -join ",") }
+  } catch {
+    Write-Warning "Ignoring invalid setup file: $SetupFile"
+  }
+}
+
+if (-not $AllowedRoots) {
+  $defaultRoots = @($ProjectRoot)
+  $documents = Join-Path $HOME "Documents"
+  if (Test-Path $documents) { $defaultRoots += $documents }
+  if (Test-Path "G:\") { $defaultRoots += "G:\" }
+  $AllowedRoots = ($defaultRoots | Select-Object -Unique) -join ","
+}
+
+$mutexCreated = $false
+$mutexName = "Local\AgentDeskFixedMcpSupervisor_" + ([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($ProjectRoot)).TrimEnd("=").Replace("+", "-").Replace("/", "_"))
+$mutex = New-Object System.Threading.Mutex($true, $mutexName, [ref]$mutexCreated)
+if (-not $mutexCreated) {
+  return
+}
+
 Set-Location -Path $ProjectRoot
 
 function Write-Utf8NoBomFile([string]$Path, [string]$Content) {
@@ -108,7 +139,11 @@ $env:DEVSPACE_OAUTH_OWNER_TOKEN = $token
 # 31536000 seconds = 365 days.
 $env:DEVSPACE_OAUTH_ACCESS_TOKEN_TTL_SECONDS = "31536000"
 $env:DEVSPACE_OAUTH_REFRESH_TOKEN_TTL_SECONDS = "31536000"
-$env:DEVSPACE_PUBLIC_FILE_BROWSER = "1"
+if ($EnablePublicFileBrowser) {
+  $env:DEVSPACE_PUBLIC_FILE_BROWSER = "1"
+} else {
+  $env:DEVSPACE_PUBLIC_FILE_BROWSER = "0"
+}
 $env:DEVSPACE_FILE_BROWSER_TOKEN = $fileBrowserToken
 $env:DEVSPACE_TRUST_PROXY = "1"
 $env:DEVSPACE_TOOL_MODE = "full"
@@ -129,6 +164,7 @@ $env:DEVSPACE_STATE_DIR = $StateDir
 $env:DEVSPACE_CONFIG_DIR = $ConfigDir
 
 Write-Host "Starting fixed AgentDesk MCP supervisor..." -ForegroundColor Green
+Write-Host "Project root: $ProjectRoot" -ForegroundColor Cyan
 Write-Host "Local MCP: http://127.0.0.1:$Port/mcp" -ForegroundColor Cyan
 Write-Host "Public MCP: $PublicBaseUrl/mcp" -ForegroundColor Cyan
 Write-Host "Owner password file: $AuthFile" -ForegroundColor Yellow

@@ -53,13 +53,37 @@ AgentDesk is based on `Waishnav/devspace`, but focuses on a different user story
 
 AgentDesk requires Node.js `>=22.19 <27`.
 
+### Windows first-run setup wizard
+
+For non-technical Windows users, clone the repository and double-click:
+
+```text
+Start-AgentDesk.cmd
+```
+
+It opens a local setup page at:
+
+```text
+http://127.0.0.1:7876/
+```
+
+The wizard can configure everything from a browser page: local port, MCP public URL, allowed folders, owner token, file-browser password, optional Cloudflare Tunnel settings, build, hidden startup tasks, and first launch.
+
+After installation, the local control center is:
+
+```text
+http://127.0.0.1:7875/console
+```
+
+### CLI / package usage
+
 ```bash
 npm install -g agentdesk-mcp
 agentdesk init
 agentdesk serve
 ```
 
-For local development from this repository:
+For manual local development from this repository:
 
 ```bash
 git clone https://github.com/lfake2320-collab/agentdesk.git
@@ -70,7 +94,7 @@ node dist/cli.js init
 node dist/cli.js serve
 ```
 
-The local MCP endpoint is:
+The default local MCP endpoint is:
 
 ```text
 http://127.0.0.1:7676/mcp

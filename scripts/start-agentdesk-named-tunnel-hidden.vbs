@@ -1,10 +1,8 @@
-Option Explicit
-
-Dim shell, command
+Set fso = CreateObject("Scripting.FileSystemObject")
 Set shell = CreateObject("WScript.Shell")
-
-shell.CurrentDirectory = "G:\devspace-copt-lab\devspace"
-command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""G:\devspace-copt-lab\devspace\scripts\run-agentdesk-named-tunnel.ps1"""
-
-' 0 = hidden window, False = do not wait. The PowerShell supervisor stays alive in the background.
-shell.Run command, 0, False
+scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
+projectRoot = fso.GetParentFolderName(scriptDir)
+ps1 = fso.BuildPath(scriptDir, "run-agentdesk-named-tunnel.ps1")
+shell.CurrentDirectory = projectRoot
+cmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File " & Chr(34) & ps1 & Chr(34) & " -ProjectRoot " & Chr(34) & projectRoot & Chr(34)
+shell.Run cmd, 0, False
