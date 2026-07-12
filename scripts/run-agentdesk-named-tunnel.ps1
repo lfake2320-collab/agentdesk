@@ -50,6 +50,19 @@ function Write-SupervisorLog([string]$Message) {
   Add-Content -Path $SupervisorLog -Value $line
 }
 
+function Invoke-HiddenCommand([string]$CommandLine) {
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = "cmd.exe"
+  $psi.Arguments = "/d /s /c " + [char]34 + $CommandLine + [char]34
+  $psi.WorkingDirectory = $ProjectRoot
+  $psi.UseShellExecute = $false
+  $psi.CreateNoWindow = $true
+  $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+  $process = [System.Diagnostics.Process]::Start($psi)
+  $process.WaitForExit()
+  return $process.ExitCode
+}
+
 if (-not (Test-Path $ConfigPath)) {
   throw "Cloudflare tunnel config not found: $ConfigPath"
 }
@@ -66,8 +79,7 @@ Write-Host "Log: $TunnelLog" -ForegroundColor Gray
 while ($true) {
   Write-SupervisorLog "starting cloudflared tunnel run $TunnelName"
   $cmd = 'cloudflared --config "' + $ConfigPath + '" tunnel run ' + $TunnelName + ' >> "' + $TunnelLog + '" 2>&1'
-  cmd.exe /d /c $cmd
-  $exit = $LASTEXITCODE
+  $exit = Invoke-HiddenCommand $cmd
   Write-SupervisorLog "cloudflared exited with code $exit; restarting in 5 seconds"
   Start-Sleep -Seconds 5
 }

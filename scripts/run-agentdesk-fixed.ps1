@@ -54,6 +54,19 @@ function Write-SupervisorLog([string]$Message) {
   Add-Content -Path $SupervisorLog -Value $line
 }
 
+function Invoke-HiddenCommand([string]$CommandLine) {
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = "cmd.exe"
+  $psi.Arguments = "/d /s /c " + [char]34 + $CommandLine + [char]34
+  $psi.WorkingDirectory = $ProjectRoot
+  $psi.UseShellExecute = $false
+  $psi.CreateNoWindow = $true
+  $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+  $process = [System.Diagnostics.Process]::Start($psi)
+  $process.WaitForExit()
+  return $process.ExitCode
+}
+
 function Convert-ToBool([object]$Value, [bool]$Fallback) {
   if ($null -eq $Value) { return $Fallback }
   if ($Value -is [bool]) { return [bool]$Value }
@@ -252,8 +265,7 @@ while ($true) {
     Write-Host "Profile: $($cfg.PermissionProfile), Tool mode: $($cfg.ToolMode), Browser: $($cfg.BrowserTools)/$($cfg.BrowserMode)" -ForegroundColor Cyan
     Write-SupervisorLog "starting node dist/cli.js serve on port $($cfg.Port), profile $($cfg.PermissionProfile), toolMode $($cfg.ToolMode)"
     $cmd = 'node dist/cli.js serve >> "' + $AgentDeskLog + '" 2>&1'
-    cmd.exe /d /c $cmd
-    $exit = $LASTEXITCODE
+    $exit = Invoke-HiddenCommand $cmd
     Write-SupervisorLog "node exited with code $exit; restarting in 5 seconds"
   } catch {
     Write-SupervisorLog "supervisor error: $($_.Exception.Message); retrying in 5 seconds"
