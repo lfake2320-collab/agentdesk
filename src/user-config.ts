@@ -8,6 +8,7 @@ import {
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { expandHomePath } from "./roots.js";
+import type { AccountConfigInput } from "./accounts.js";
 
 export interface DevspaceUserConfig {
   host?: string;
@@ -29,6 +30,7 @@ export interface DevspaceUserConfig {
   browserMode?: "isolated" | "live";
   browserUserDataDir?: string;
   browserProfileDirectory?: string;
+  account?: AccountConfigInput;
 }
 
 export interface DevspaceAuthConfig {

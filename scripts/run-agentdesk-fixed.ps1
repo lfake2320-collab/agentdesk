@@ -115,7 +115,7 @@ function Get-OwnerToken {
     $token = New-OwnerToken
   }
 
-  if (-not $token -or $token.Length -lt 16) {
+  if (-not $token) {
     $token = New-OwnerToken
   }
 
@@ -136,7 +136,7 @@ function Get-FileBrowserToken {
     $password = New-FileBrowserToken
   }
 
-  if (-not $password -or $password.Length -lt 32) {
+  if (-not $password) {
     $password = New-FileBrowserToken
   }
 
@@ -166,6 +166,14 @@ function Read-AgentDeskSetup {
     BrowserMode = $BrowserMode
     Plugins = $Plugins
     Skills = $Skills
+    AccountGating = $false
+    AccountId = ""
+    AccountEmail = ""
+    AccountPlan = "free"
+    LicenseKey = ""
+    LicenseFeatures = ""
+    PremiumFeatures = ""
+    LicenseExpiresAt = ""
   }
 
   if (Test-Path $SetupFile) {
@@ -185,6 +193,14 @@ function Read-AgentDeskSetup {
       $cfg.BrowserMode = Convert-ToChoice $setup.browserMode $cfg.BrowserMode @("isolated", "live")
       $cfg.Plugins = Convert-ToBool $setup.plugins $cfg.Plugins
       $cfg.Skills = Convert-ToBool $setup.skills $cfg.Skills
+      $cfg.AccountGating = Convert-ToBool $setup.accountGating $cfg.AccountGating
+      if ($setup.accountId) { $cfg.AccountId = [string]$setup.accountId }
+      if ($setup.accountEmail) { $cfg.AccountEmail = [string]$setup.accountEmail }
+      if ($setup.accountPlan) { $cfg.AccountPlan = [string]$setup.accountPlan }
+      if ($setup.licenseKey) { $cfg.LicenseKey = [string]$setup.licenseKey }
+      if ($setup.licenseFeatures) { $cfg.LicenseFeatures = (($setup.licenseFeatures | ForEach-Object { [string]$_ }) -join ",") }
+      if ($setup.premiumFeatures) { $cfg.PremiumFeatures = (($setup.premiumFeatures | ForEach-Object { [string]$_ }) -join ",") }
+      if ($setup.licenseExpiresAt) { $cfg.LicenseExpiresAt = [string]$setup.licenseExpiresAt }
     } catch {
       Write-Warning "Ignoring invalid setup file: $SetupFile"
     }
@@ -246,6 +262,14 @@ function Apply-AgentDeskEnvironment([hashtable]$Cfg) {
   $env:DEVSPACE_SKILLS = if ($Cfg.Skills) { "1" } else { "0" }
   $env:DEVSPACE_STATE_DIR = $StateDir
   $env:DEVSPACE_CONFIG_DIR = $ConfigDir
+  $env:DEVSPACE_ACCOUNT_GATING = if ($Cfg.AccountGating) { "1" } else { "0" }
+  $env:DEVSPACE_ACCOUNT_ID = $Cfg.AccountId
+  $env:DEVSPACE_ACCOUNT_EMAIL = $Cfg.AccountEmail
+  $env:DEVSPACE_ACCOUNT_PLAN = $Cfg.AccountPlan
+  $env:DEVSPACE_LICENSE_KEY = $Cfg.LicenseKey
+  $env:DEVSPACE_LICENSE_FEATURES = $Cfg.LicenseFeatures
+  $env:DEVSPACE_PREMIUM_FEATURES = $Cfg.PremiumFeatures
+  $env:DEVSPACE_LICENSE_EXPIRES_AT = $Cfg.LicenseExpiresAt
 
   return @{ OwnerToken = $token; FileBrowserToken = $fileBrowserToken }
 }

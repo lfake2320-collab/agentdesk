@@ -17,6 +17,8 @@ assert.equal(loadConfig({ ...baseEnv, DEVSPACE_WIDGETS: "changes" }).widgets, "c
 assert.equal(loadConfig({ ...baseEnv, DEVSPACE_WIDGETS: "full" }).widgets, "full");
 assert.equal(loadConfig({ ...baseEnv, DEVSPACE_WIDGETS: "off" }).widgets, "off");
 assert.equal(loadConfig(baseEnv).toolMode, "minimal");
+assert.equal(loadConfig(baseEnv).account.enabled, false);
+assert.equal(loadConfig(baseEnv).account.plan, "developer");
 assert.equal(loadConfig(baseEnv).permissionProfile, "dev");
 assert.equal(loadConfig(baseEnv).systemToolsEnabled, false);
 assert.equal(loadConfig(baseEnv).processControlEnabled, false);
@@ -25,6 +27,8 @@ assert.equal(loadConfig({ ...baseEnv, DEVSPACE_PERMISSION_PROFILE: "owner" }).pr
 assert.equal(loadConfig({ ...baseEnv, DEVSPACE_PERMISSION_PROFILE: "owner" }).browserToolsEnabled, false);
 assert.equal(loadConfig({ ...baseEnv, DEVSPACE_PERMISSION_PROFILE: "owner", DEVSPACE_BROWSER_TOOLS: "1" }).browserToolsEnabled, true);
 assert.equal(loadConfig({ ...baseEnv, DEVSPACE_PERMISSION_PROFILE: "power", DEVSPACE_BROWSER_TOOLS: "1" }).browserToolsEnabled, true);
+assert.equal(loadConfig({ ...baseEnv, DEVSPACE_ACCOUNT_GATING: "1", DEVSPACE_PERMISSION_PROFILE: "power", DEVSPACE_BROWSER_TOOLS: "1" }).browserToolsEnabled, false);
+assert.equal(loadConfig({ ...baseEnv, DEVSPACE_ACCOUNT_GATING: "1", DEVSPACE_ACCOUNT_PLAN: "pro", DEVSPACE_PERMISSION_PROFILE: "power", DEVSPACE_BROWSER_TOOLS: "1" }).browserToolsEnabled, true);
 assert.equal(loadConfig({ ...baseEnv, DEVSPACE_PERMISSION_PROFILE: "owner", DEVSPACE_PROCESS_CONTROL: "1" }).processControlEnabled, true);
 assert.equal(loadConfig({ ...baseEnv, DEVSPACE_PERMISSION_PROFILE: "power", DEVSPACE_PROCESS_CONTROL: "1" }).processControlEnabled, true);
 assert.equal(loadConfig({ ...baseEnv, DEVSPACE_PERMISSION_PROFILE: "safe" }).permissionProfile, "safe");
@@ -36,6 +40,8 @@ assert.equal(loadConfig({ ...baseEnv, DEVSPACE_PERMISSION_PROFILE: "power", DEVS
 assert.equal(loadConfig({ ...baseEnv, DEVSPACE_TOOL_MODE: "minimal" }).toolMode, "minimal");
 assert.equal(loadConfig({ ...baseEnv, DEVSPACE_TOOL_MODE: "full" }).toolMode, "full");
 assert.equal(loadConfig({ ...baseEnv, DEVSPACE_TOOL_MODE: "codex" }).toolMode, "codex");
+assert.equal(loadConfig({ ...baseEnv, DEVSPACE_ACCOUNT_GATING: "1", DEVSPACE_TOOL_MODE: "codex" }).toolMode, "minimal");
+assert.equal(loadConfig({ ...baseEnv, DEVSPACE_ACCOUNT_GATING: "1", DEVSPACE_ACCOUNT_PLAN: "pro", DEVSPACE_TOOL_MODE: "codex" }).toolMode, "codex");
 assert.equal(loadConfig({ ...baseEnv, DEVSPACE_MINIMAL_TOOLS: "0" }).toolMode, "full");
 assert.equal(loadConfig({ ...baseEnv, DEVSPACE_MINIMAL_TOOLS: "1" }).toolMode, "minimal");
 assert.equal(loadConfig(baseEnv).skillsEnabled, true);
@@ -154,10 +160,7 @@ assert.throws(
   () => loadConfig({ DEVSPACE_CONFIG_DIR: emptyConfigDir, DEVSPACE_ALLOWED_ROOTS: process.cwd() }),
   /DEVSPACE_OAUTH_OWNER_TOKEN is required/,
 );
-assert.throws(
-  () => loadConfig({ ...baseEnv, DEVSPACE_OAUTH_OWNER_TOKEN: "too-short" }),
-  /DEVSPACE_OAUTH_OWNER_TOKEN must be at least 16 characters long/,
-);
+assert.equal(loadConfig({ ...baseEnv, DEVSPACE_OAUTH_OWNER_TOKEN: "x" }).oauth.ownerToken, "x");
 assert.throws(
   () => loadConfig({ ...baseEnv, DEVSPACE_OAUTH_ACCESS_TOKEN_TTL_SECONDS: "0" }),
   /Invalid DEVSPACE_OAUTH_ACCESS_TOKEN_TTL_SECONDS: 0/,

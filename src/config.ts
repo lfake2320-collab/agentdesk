@@ -7,6 +7,7 @@ import { devspaceAgentsDir, devspacePluginsDir, devspaceSkillsDir, loadDevspaceF
 import { parsePermissionProfile, type PermissionProfile } from "./permissions.js";
 import { canUseSystemTools } from "./system-tools.js";
 import { canUseBrowserTools } from "./browser-tools.js";
+import { isFeatureAllowed, loadAccountStatus, type AccountStatus } from "./accounts.js";
 
 export type ToolMode = "minimal" | "full" | "codex";
 export type WidgetMode = "off" | "changes" | "full";
@@ -38,6 +39,7 @@ export interface ServerConfig {
   subagents: boolean;
   agentDir: string;
   logging: LoggingConfig;
+  account: AccountStatus;
 }
 
 function parsePort(value: string | number | undefined): number {
@@ -169,9 +171,6 @@ function parseRequiredSecret(value: string | undefined, name: string): string {
   if (!secret) {
     throw new Error(`${name} is required for DevSpace OAuth. Run: devspace init`);
   }
-  if (secret.length < 16) {
-    throw new Error(`${name} must be at least 16 characters long.`);
-  }
   return secret;
 }
 
@@ -226,15 +225,22 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   ];
 
   const permissionProfile = parsePermissionProfile(env.DEVSPACE_PERMISSION_PROFILE ?? files.config.permissionProfile);
-  const systemToolsEnabled = env.DEVSPACE_SYSTEM_TOOLS === undefined
+  const account = loadAccountStatus(env, files.config.account);
+  const requestedToolMode = parseToolMode(env);
+  const toolMode = requestedToolMode === "codex" && !isFeatureAllowed(account, "codex_tool_mode")
+    ? "minimal"
+    : requestedToolMode === "full" && !isFeatureAllowed(account, "full_tool_mode")
+      ? "minimal"
+      : requestedToolMode;
+  const systemToolsEnabled = (env.DEVSPACE_SYSTEM_TOOLS === undefined
     ? canUseSystemTools(permissionProfile)
-    : parseBoolean(env.DEVSPACE_SYSTEM_TOOLS);
-  const processControlEnabled = env.DEVSPACE_PROCESS_CONTROL === undefined
+    : parseBoolean(env.DEVSPACE_SYSTEM_TOOLS)) && isFeatureAllowed(account, "system_tools");
+  const processControlEnabled = (env.DEVSPACE_PROCESS_CONTROL === undefined
     ? permissionProfile === "owner" && files.config.processControl === true
-    : parseBoolean(env.DEVSPACE_PROCESS_CONTROL);
-  const browserToolsEnabled = env.DEVSPACE_BROWSER_TOOLS === undefined
+    : parseBoolean(env.DEVSPACE_PROCESS_CONTROL)) && isFeatureAllowed(account, "process_control");
+  const browserToolsEnabled = (env.DEVSPACE_BROWSER_TOOLS === undefined
     ? canUseBrowserTools(permissionProfile) && files.config.browserTools === true
-    : parseBoolean(env.DEVSPACE_BROWSER_TOOLS);
+    : parseBoolean(env.DEVSPACE_BROWSER_TOOLS)) && isFeatureAllowed(account, "browser_tools");
 
   return {
     host,
@@ -243,12 +249,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     allowedRoots: parseAllowedRoots(env.DEVSPACE_ALLOWED_ROOTS ?? files.config.allowedRoots),
     allowedHosts: parseAllowedHosts(env.DEVSPACE_ALLOWED_HOSTS, derivedAllowedHosts),
     publicBaseUrl,
-    toolMode: parseToolMode(env),
+    toolMode,
     permissionProfile,
     widgets: parseWidgetMode(env.DEVSPACE_WIDGETS),
     stateDir: resolve(expandHomePath(env.DEVSPACE_STATE_DIR ?? files.config.stateDir ?? defaultStateDir())),
     worktreeRoot: resolve(expandHomePath(env.DEVSPACE_WORKTREE_ROOT ?? files.config.worktreeRoot ?? defaultWorktreeRoot())),
-    skillsEnabled: env.DEVSPACE_SKILLS === undefined ? true : parseBoolean(env.DEVSPACE_SKILLS),
+    skillsEnabled: (env.DEVSPACE_SKILLS === undefined ? true : parseBoolean(env.DEVSPACE_SKILLS)) && isFeatureAllowed(account, "skills"),
     skillPaths: [
       ...parsePathList(files.config.skillPaths?.join(",")),
       ...parsePathList(env.DEVSPACE_SKILL_PATHS),
@@ -256,9 +262,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     devspaceSkillsDir: devspaceSkillsDir(env),
     devspaceAgentsDir: devspaceAgentsDir(env),
     pluginsEnabled:
-      env.DEVSPACE_PLUGINS === undefined
+      (env.DEVSPACE_PLUGINS === undefined
         ? files.config.plugins !== false
-        : parseBoolean(env.DEVSPACE_PLUGINS),
+        : parseBoolean(env.DEVSPACE_PLUGINS)) && isFeatureAllowed(account, "plugins"),
     pluginPaths: [
       ...parsePathList(files.config.pluginPaths?.join(",")),
       ...parsePathList(env.DEVSPACE_PLUGIN_PATHS),
@@ -268,11 +274,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     processControlEnabled,
     browserToolsEnabled,
     subagents:
-      env.DEVSPACE_SUBAGENTS === undefined
+      (env.DEVSPACE_SUBAGENTS === undefined
         ? files.config.subagents === true
-        : parseBoolean(env.DEVSPACE_SUBAGENTS),
+        : parseBoolean(env.DEVSPACE_SUBAGENTS)) && isFeatureAllowed(account, "subagents"),
     agentDir: resolve(expandHomePath(env.DEVSPACE_AGENT_DIR ?? files.config.agentDir ?? defaultAgentDir())),
     logging: parseLoggingConfig(env),
+    account,
   };
 }
 

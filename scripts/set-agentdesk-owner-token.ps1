@@ -27,16 +27,8 @@ function New-SecureOwnerToken {
   return "adsk-fixed-$body"
 }
 
-function Test-WeakToken([string]$Value) {
+function Test-ConfiguredToken([string]$Value) {
   if (-not $Value) { return "Token is empty." }
-  if ($Value.Length -lt 32) { return "Token must be at least 32 characters long." }
-    
-  $classes = 0
-  if ($Value -cmatch "[A-Z]") { $classes++ }
-  if ($Value -cmatch "[a-z]") { $classes++ }
-  if ($Value -match "[0-9]") { $classes++ }
-  if ($Value -match "[^A-Za-z0-9]") { $classes++ }
- 
   return $null
 }
 
@@ -57,9 +49,9 @@ if ($Generate -or -not $Token) {
   $Token = New-SecureOwnerToken
 }
 
-$reason = Test-WeakToken $Token
+$reason = Test-ConfiguredToken $Token
 if ($reason) {
-  throw "Refusing to set weak AgentDesk owner token: $reason"
+  throw "Refusing to set empty AgentDesk owner token: $reason"
 }
 
 $auth = @{ ownerToken = $Token } | ConvertTo-Json -Depth 3

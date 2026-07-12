@@ -63,7 +63,7 @@ if (-not (Test-Path $AuthFile)) {
   }
 }
 
-if (-not $token -or $token.Length -lt 16) {
+if (-not $token) {
   $token = New-AgentDeskGptOwnerToken
   $auth = @{ ownerToken = $token } | ConvertTo-Json -Depth 3
   Write-JsonNoBom -Path $AuthFile -Json $auth

@@ -1,8 +1,12 @@
 # AgentDesk
 
-> Turn ChatGPT into a Windows-first local engineering copilot.
+> Turn ChatGPT or Claude into a Codex / Claude Code-style local coding agent for your Windows machine.
 
-AgentDesk connects ChatGPT, Claude, or another MCP-capable host to your local Windows development machine. It can read and edit approved project folders, run tests and builds, inspect ports and processes, check proxy settings, and help diagnose broken localhost/dev-server problems.
+AgentDesk is a Windows-first local MCP server that connects ChatGPT, Claude, or another MCP-capable host to your real development machine. It gives your AI assistant Codex-style / Claude Code-style abilities: open a workspace, read and edit approved project folders, run tests and builds, inspect ports and processes, check proxy settings, automate Edge, and diagnose broken localhost/dev-server problems.
+
+**Search keywords:** ChatGPT MCP coding agent, Claude MCP server, Claude Code-style local agent, Codex-style coding assistant, Windows AI developer copilot, local MCP workspace, AI agent for GitHub projects, ChatGPT local file editing, Claude local terminal access.
+
+AgentDesk is not an official OpenAI Codex or Anthropic Claude Code product. It is an independent MCP bridge that brings similar local coding-agent workflows to ChatGPT, Claude, and other MCP clients.
 
 中文文档见：[README.zh-CN.md](README.zh-CN.md)。
 

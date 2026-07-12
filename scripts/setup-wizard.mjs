@@ -51,6 +51,7 @@ function main() {
 
 function defaults() {
   const setup = readJson(setupFile) ?? {};
+  const env = process.env;
   const docs = join(homedir(), "Documents");
   const workspaceRoot = join(docs, "AgentDesk-Workspaces");
   try {
@@ -58,9 +59,15 @@ function defaults() {
   } catch {
     // The setup page can still render; installation will report filesystem errors later if needed.
   }
+
+  const port = numberSetting(setup.port, env.PORT, 7875);
+  const rootsFromEnv = splitList(env.DEVSPACE_ALLOWED_ROOTS);
   const roots = Array.isArray(setup.allowedRoots) && setup.allowedRoots.length
     ? setup.allowedRoots
-    : [projectRoot, workspaceRoot].filter(Boolean);
+    : rootsFromEnv.length
+      ? rootsFromEnv
+      : [projectRoot, workspaceRoot].filter(Boolean);
+  const allowWideRoots = setup.allowWideRoots ?? Boolean(roots.some(isWideAllowedRoot));
 
   return {
     projectRoot,
@@ -71,20 +78,51 @@ function defaults() {
     hasBuild: existsSync(join(projectRoot, "dist", "cli.js")),
     hasSetup: existsSync(setupFile),
     defaultConfig: {
-      port: setup.port ?? 7875,
-      browserDebugPort: setup.browserDebugPort ?? 9342,
-      publicBaseUrl: setup.publicBaseUrl ?? "http://127.0.0.1:7875",
-      edgeProfile: setup.edgeProfile ?? "Default",
+      port,
+      browserDebugPort: numberSetting(setup.browserDebugPort, env.DEVSPACE_BROWSER_DEBUG_PORT, 9342),
+      publicBaseUrl: setup.publicBaseUrl ?? env.DEVSPACE_PUBLIC_BASE_URL ?? `http://127.0.0.1:${port}`,
+      edgeProfile: setup.edgeProfile ?? env.DEVSPACE_BROWSER_PROFILE_DIRECTORY ?? "Default",
       allowedRoots: roots,
-      enablePublicFileBrowser: setup.enablePublicFileBrowser ?? false,
+      enablePublicFileBrowser: setup.enablePublicFileBrowser ?? boolSetting(env.DEVSPACE_PUBLIC_FILE_BROWSER, false),
       enableTunnel: setup.enableTunnel ?? false,
-      allowWideRoots: setup.allowWideRoots ?? false,
+      allowWideRoots,
       tunnelName: setup.tunnelName ?? "agentdesk",
       tunnelId: setup.tunnelId ?? "",
       tunnelHostname: setup.tunnelHostname ?? "",
       tunnelCredentialsFile: setup.tunnelCredentialsFile ?? "",
+      accountGating: setup.accountGating ?? boolSetting(env.DEVSPACE_ACCOUNT_GATING, false),
+      accountId: setup.accountId ?? env.DEVSPACE_ACCOUNT_ID ?? "",
+      accountEmail: setup.accountEmail ?? env.DEVSPACE_ACCOUNT_EMAIL ?? "",
+      accountPlan: setup.accountPlan ?? env.DEVSPACE_ACCOUNT_PLAN ?? env.DEVSPACE_LICENSE_PLAN ?? "free",
+      licenseKey: setup.licenseKey ?? env.DEVSPACE_LICENSE_KEY ?? "",
+      licenseFeatures: Array.isArray(setup.licenseFeatures) ? setup.licenseFeatures : splitList(env.DEVSPACE_LICENSE_FEATURES),
+      premiumFeatures: Array.isArray(setup.premiumFeatures) ? setup.premiumFeatures : splitList(env.DEVSPACE_PREMIUM_FEATURES),
+      licenseExpiresAt: setup.licenseExpiresAt ?? env.DEVSPACE_LICENSE_EXPIRES_AT ?? "",
     },
   };
+}
+
+function splitList(value) {
+  return String(value || "")
+    .split(/\r?\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function numberSetting(primary, fallback, defaultValue) {
+  for (const value of [primary, fallback]) {
+    const n = parseInt(value, 10);
+    if (Number.isInteger(n) && n >= 1 && n <= 65535) return n;
+  }
+  return defaultValue;
+}
+
+function boolSetting(value, defaultValue) {
+  if (value == null || value === "") return defaultValue;
+  const text = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(text)) return true;
+  if (["0", "false", "no", "off"].includes(text)) return false;
+  return defaultValue;
 }
 
 async function startInstall(req, res) {
@@ -120,17 +158,25 @@ async function runInstall(input) {
     tunnelId: cfg.tunnelId,
     tunnelHostname: cfg.tunnelHostname,
     tunnelCredentialsFile: cfg.tunnelCredentialsFile,
+    accountGating: cfg.accountGating,
+    accountId: cfg.accountId,
+    accountEmail: cfg.accountEmail,
+    accountPlan: cfg.accountPlan,
+    licenseKey: cfg.licenseKey,
+    licenseFeatures: cfg.licenseFeatures,
+    premiumFeatures: cfg.premiumFeatures,
+    licenseExpiresAt: cfg.licenseExpiresAt,
     createdAt: new Date().toISOString(),
   });
   appendLog(`Wrote setup: ${setupFile}\n`);
 
   const ownerToken = cfg.ownerToken || randomToken("adsk-owner");
-  assertStrongToken(ownerToken, "Owner Token");
+  assertConfiguredSecret(ownerToken, "Owner Token");
   writeJson(authFile, { ownerToken });
   appendLog(`Wrote owner token file: ${authFile}\n`);
 
   const filePassword = cfg.fileBrowserPassword || randomToken("adsk-files");
-  assertStrongToken(filePassword, "File browser password");
+  assertConfiguredSecret(filePassword, "File browser password");
   writeJson(fileBrowserAuthFile, { username: "agentdesk", password: filePassword });
   appendLog(`Wrote file browser password file: ${fileBrowserAuthFile}\n`);
 
@@ -236,6 +282,14 @@ function normalizeConfig(input) {
     tunnelId,
     tunnelHostname,
     tunnelCredentialsFile,
+    accountGating: Boolean(input.accountGating),
+    accountId: String(input.accountId || "").trim(),
+    accountEmail: String(input.accountEmail || "").trim(),
+    accountPlan: String(input.accountPlan || "free").trim() || "free",
+    licenseKey: String(input.licenseKey || "").trim(),
+    licenseFeatures: String(input.licenseFeatures || "").split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean),
+    premiumFeatures: String(input.premiumFeatures || "").split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean),
+    licenseExpiresAt: String(input.licenseExpiresAt || "").trim(),
     ownerToken: String(input.ownerToken || "").trim(),
     fileBrowserPassword: String(input.fileBrowserPassword || "").trim(),
     installDeps: input.installDeps !== false,
@@ -266,9 +320,8 @@ function writeTunnelConfig(cfg) {
   writeFileSync(tunnelConfigFile, yaml, "utf8");
 }
 
-function assertStrongToken(token, label) {
-  if (!token || token.length < 32) throw new Error(`${label} must be at least 32 characters long.`);
-  if (/^(.)\1+$/.test(token)) throw new Error(`${label} cannot be made of one repeated character.`);
+function assertConfiguredSecret(token, label) {
+  if (!token) throw new Error(`${label} must not be empty.`);
 }
 
 function randomToken(prefix) {
@@ -389,10 +442,10 @@ function pageHtml() {
 
     <section class="card">
       <h2>2. 安全凭据</h2>
-      <label>Owner Token</label><input name="ownerToken" placeholder="留空自动生成强 token" />
-      <label>公网文件浏览器密码</label><input name="fileBrowserPassword" placeholder="留空自动生成强密码" />
+      <label>Owner Token</label><input name="ownerToken" placeholder="留空自动生成；自定义时任意非空内容" />
+      <label>公网文件浏览器密码</label><input name="fileBrowserPassword" placeholder="留空自动生成；自定义时任意非空内容" />
       <label class="toggle"><input type="checkbox" name="enablePublicFileBrowser" /> 启用公网只读文件浏览器 /files</label>
-      <div class="hint">不会接受全 A、全 1 等弱口令。文件浏览器和 MCP Owner Token 分开。</div>
+      <div class="hint">自定义凭据只要求非空，不做强度、长度或字符类型约束。文件浏览器和 MCP Owner Token 分开。</div>
     </section>
 
     <section class="card full">
@@ -418,10 +471,23 @@ function pageHtml() {
     </section>
 
     <section class="card full">
-      <h2>5. 安装动作</h2>
+      <h2>5. 账号与收费功能，可选</h2>
+      <label class="toggle"><input type="checkbox" name="accountGating" /> 启用账号/授权功能门控</label>
+      <label>账号 ID</label><input name="accountId" placeholder="例如 user_123" />
+      <label>账号邮箱</label><input name="accountEmail" placeholder="例如 user@example.com" />
+      <label>账号方案</label><input name="accountPlan" placeholder="free / pro / team / enterprise / lifetime" />
+      <label>License Key</label><input name="licenseKey" placeholder="由你的收费系统发放；本地只保存指纹和功能状态" />
+      <label>已解锁功能</label><textarea name="licenseFeatures" placeholder="每行一个，例如：browser_tools&#10;plugins"></textarea>
+      <label>需要付费的功能</label><textarea name="premiumFeatures" placeholder="留空使用默认高级功能列表；也可每行一个覆盖"></textarea>
+      <label>到期时间</label><input name="licenseExpiresAt" placeholder="例如 2027-01-01T00:00:00Z" />
+      <div class="hint">开源发布时，推荐把支付、续费和 license 发放放在你自己的后端；这里负责本地读取授权并控制高级功能。</div>
+    </section>
+
+    <section class="card full">
+      <h2>6. 安装动作</h2>
       <label class="toggle"><input type="checkbox" name="installDeps" checked /> 运行 npm install</label>
       <label class="toggle"><input type="checkbox" name="build" checked /> 运行 npm run build</label>
-      <div class="row" style="margin-top:14px"><button id="installBtn" type="submit">开始安装并启动 AgentDesk</button><span id="state" class="hint"></span></div>
+      <div class="row" style="margin-top:14px"><button id="quickInstallBtn" type="button">小白极速安装：用推荐配置直接启动</button><button id="installBtn" type="submit">高级安装：按上面表单启动</button><span id="state" class="hint"></span></div>
       <div class="links" id="links" style="margin-top:12px"></div>
     </section>
   </form>
@@ -437,7 +503,9 @@ const logEl = document.getElementById('log');
 const stateEl = document.getElementById('state');
 const linksEl = document.getElementById('links');
 const installBtn = document.getElementById('installBtn');
+const quickInstallBtn = document.getElementById('quickInstallBtn');
 let polling = null;
+let loadedDefaults = null;
 
 async function loadDefaults(){
   const data = await fetch('/api/defaults').then(r=>r.json());
@@ -448,6 +516,7 @@ async function loadDefaults(){
     '<span class="pill '+(data.cloudflaredAvailable?'ok':'bad')+'">cloudflared: '+(data.cloudflaredAvailable?'OK':'Optional')+'</span>',
     '<span class="pill '+(data.hasBuild?'ok':'bad')+'">build: '+(data.hasBuild?'exists':'not built')+'</span>'
   ].join(' ');
+  loadedDefaults = data.defaultConfig;
   const c=data.defaultConfig;
   for(const [k,v] of Object.entries(c)){
     const el=form.elements[k]; if(!el) continue;
@@ -464,17 +533,26 @@ form.addEventListener('submit', async (e)=>{
     if(!el.name) continue;
     payload[el.name]=el.type==='checkbox'?el.checked:el.value;
   }
-  installBtn.disabled=true; stateEl.textContent='安装中...'; linksEl.textContent=''; logEl.textContent='Starting...';
-  const res=await fetch('/api/install',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
-  if(!res.ok){ stateEl.textContent=await res.text(); installBtn.disabled=false; return; }
-  polling=setInterval(poll,1000); poll();
+  startInstall(payload);
 });
+
+quickInstallBtn.addEventListener('click', async ()=>{
+  if(!loadedDefaults) await loadDefaults();
+  startInstall({ ...loadedDefaults, installDeps: true, build: true });
+});
+
+async function startInstall(payload){
+  installBtn.disabled=true; quickInstallBtn.disabled=true; stateEl.textContent='安装中...'; linksEl.textContent=''; logEl.textContent='Starting...';
+  const res=await fetch('/api/install',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+  if(!res.ok){ stateEl.textContent=await res.text(); installBtn.disabled=false; quickInstallBtn.disabled=false; return; }
+  polling=setInterval(poll,1000); poll();
+}
 
 async function poll(){
   const j=await fetch('/api/job').then(r=>r.json());
   logEl.textContent=j.log||''; logEl.scrollTop=logEl.scrollHeight;
   if(j.done){
-    clearInterval(polling); installBtn.disabled=false; stateEl.textContent=j.ok?'安装完成':'安装失败'; stateEl.className=j.ok?'ok':'bad';
+    clearInterval(polling); installBtn.disabled=false; quickInstallBtn.disabled=false; stateEl.textContent=j.ok?'安装完成':'安装失败'; stateEl.className=j.ok?'ok':'bad';
     if(j.result){ linksEl.innerHTML = '<a target="_blank" href="'+escAttr(j.result.localConsole)+'">打开本机控制台</a><a target="_blank" href="'+escAttr(j.result.mcpUrl)+'">MCP 地址</a>'+(j.result.publicStatus?'<a target="_blank" href="'+escAttr(j.result.publicStatus)+'">公网状态页</a>':''); }
   }
 }

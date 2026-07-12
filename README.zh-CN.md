@@ -1,36 +1,64 @@
 # AgentDesk
 
-> 把 ChatGPT 变成你的 Windows 本地工程副驾驶。
+> 把 ChatGPT 或 Claude 变成类似 Codex / Claude Code 的 Windows 本地编程 Agent。
 
-AgentDesk 可以让 ChatGPT、Claude 或其他支持 MCP 的客户端安全连接到你的 Windows 电脑。它能在你允许的目录里读文件、改代码、跑测试、查端口、看进程、检查代理，并帮你诊断 localhost、Node、Docker、Codex、MCP 连接这类本地开发问题。
+AgentDesk 是一个 Windows-first 本地 MCP 服务，可以让 ChatGPT、Claude 或其他支持 MCP 的客户端安全连接到你的真实 Windows 电脑。它能给你的 AI 助手加上类似 Codex、Claude Code、Cursor Agent 的本地工程能力：打开项目、读文件、改代码、跑测试、查端口、看进程、检查代理、操控 Edge，并帮你诊断 localhost、Node、Docker、Codex、MCP 连接这类本地开发问题。
+
+**搜索关键词：** ChatGPT MCP 本地编程 Agent、Claude MCP Server、Claude Code 类似工具、Codex 类似工具、Windows AI 编程助手、本地 MCP 工作区、AI Agent 改代码、ChatGPT 连接本地文件、Claude 操作本地终端。
+
+说明：AgentDesk 不是 OpenAI Codex 或 Anthropic Claude Code 的官方产品，而是一个独立的 MCP 桥接工具，用来把类似的本地编程 Agent 工作流接入 ChatGPT、Claude 和其他 MCP 客户端。
 
 一句话：**不要只让 ChatGPT 写代码，要让它看懂你的电脑为什么炸了。**
 
 ## 第一次 clone 的小白路线
 
-完整教程：
+最短流程已经改成真正的一键入口：
+
+```text
+双击：Start-AgentDesk.cmd
+```
+
+如果你在 `G:\devspace-copt-lab` 这一层，也可以双击外层入口：
+
+```text
+一键启动-AgentDesk.cmd
+```
+
+这个入口会自动判断当前状态：
+
+| 情况 | 它会怎么做 |
+| --- | --- |
+| AgentDesk 已经活着 | 只打开控制台，不重复折腾 |
+| 缺少 node_modules | 自动执行 `npm install` |
+| 缺少 dist 构建 | 自动执行 `npm run build` |
+| 后台任务没启动 | 自动注册并启动 `AgentDesk Fixed MCP` |
+| 首次没有配置 | 自动写入默认配置，再拉起服务 |
+| 启动失败 | 显示端口占用、日志目录，并打开设置向导 |
+| 自定义凭据 | 只要求非空，不再检查长度、字符种类或重复字符 |
+
+一句话：现在不是“照着教程敲命令”，而是“你双击，它自己体检、自己穿衣服、自己出门”。
+
+完整教程仍然放在：
 
 ```text
 docs/first-clone-windows.md
 ```
 
-最短流程：
+账号与收费高级功能机制见：
 
-```powershell
-git clone https://github.com/lfake2320-collab/agentdesk.git
-cd agentdesk
-npm install
-npm run build
-Start-AgentDesk.cmd
+```text
+docs/commercial-features.md
 ```
 
-双击 `Start-AgentDesk.cmd` 后，会打开首次设置向导：
+高级设置向导地址：
 
 ```text
 http://127.0.0.1:7876/
 ```
 
-安装完成后，默认地址是：
+设置向导里也新增了 **小白极速安装：用推荐配置直接启动** 按钮。你不想看参数，就点它；想微调，再用高级安装。
+
+安装完成后的常用地址：
 
 ```text
 本机控制台：http://127.0.0.1:7875/console
@@ -38,7 +66,7 @@ http://127.0.0.1:7876/
 本机 MCP：http://127.0.0.1:7875/mcp
 ```
 
-首次 clone 后可以先跑验收脚本：
+首次 clone 后仍然可以跑验收脚本：
 
 ```powershell
 .\scripts\verify-first-clone.ps1 -SkipTests

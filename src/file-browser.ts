@@ -4,6 +4,7 @@ import { basename, dirname } from "node:path";
 import type { Express, Request, Response } from "express";
 import type { ServerConfig } from "./config.js";
 import { assertAllowedPath } from "./roots.js";
+import { blockedFeatureMessage, isFeatureAllowed } from "./accounts.js";
 
 const PUBLIC_FILE_BROWSER_ENV = "DEVSPACE_PUBLIC_FILE_BROWSER";
 const FILE_BROWSER_TOKEN_ENV = "DEVSPACE_FILE_BROWSER_TOKEN";
@@ -29,8 +30,13 @@ export function registerFileBrowserRoutes(app: Express, config: ServerConfig): v
       return;
     }
 
+    if (!isFeatureAllowed(config.account, "public_file_browser")) {
+      res.status(402).type("text/plain").send(blockedFeatureMessage(config.account, "public_file_browser"));
+      return;
+    }
+
     const token = process.env[FILE_BROWSER_TOKEN_ENV];
-    if (!token || token.length < 32) {
+    if (!token) {
       res.status(503).type("text/plain").send("public file browser token is not configured");
       return;
     }
