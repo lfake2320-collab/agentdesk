@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type { Express, Request, Response } from "express";
 import type { ServerConfig } from "./config.js";
@@ -24,6 +24,20 @@ export function registerControlConsoleRoutes(app: Express, config: ServerConfig)
     const name = typeof req.query.name === "string" ? req.query.name : "agentdesk";
     const log = await readSafeLog(config, name);
     res.json(log);
+  });
+
+  app.post("/console/api/allowed-roots", async (req, res) => {
+    if (!isLocalConsoleRequest(req)) return denyLocalOnly(res);
+    try {
+      const body = await readRequestJson(req);
+      const roots = await normalizeAllowedRootsInput(body.allowedRoots ?? body.roots);
+      config.allowedRoots.splice(0, config.allowedRoots.length, ...roots);
+      process.env.DEVSPACE_ALLOWED_ROOTS = roots.join(",");
+      await updateSetupFile(config, { allowedRoots: roots, updatedAt: new Date().toISOString() });
+      res.json({ ok: true, allowedRoots: roots, message: "可访问目录已保存，并已对当前运行中的 AgentDesk 生效。下次重启也会继续使用这些目录。" });
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
   });
 
   app.post("/console/api/rotate-owner-token", async (req, res) => {
@@ -192,7 +206,13 @@ function renderConsolePage(config: ServerConfig): string {
       <article class="panel"><h2>功能状态</h2><dl id="feature-list"></dl></article>
     </section>
 
-    <section class="panel"><h2>允许访问目录</h2><div id="roots" class="roots"></div></section>
+    <section class="panel">
+      <h2>允许访问目录</h2>
+      <p>每行一个目录。保存后会立即影响本机文件浏览器、MCP 文件工具和下次启动配置。建议只添加需要的目录，不要轻易开放整盘。</p>
+      <div id="roots" class="roots"></div>
+      <textarea id="allowed-roots-editor" class="editor" spellcheck="false" placeholder="例如：C:\\Users\\你的用户名\\Documents"></textarea>
+      <div class="actions"><button onclick="saveAllowedRoots()">保存可访问目录</button><button class="secondary" onclick="loadStatus()">恢复当前值</button></div>
+    </section>
 
     <section class="panel"><h2>日志查看</h2><div class="actions"><button onclick="loadLog('agentdesk')">AgentDesk</button><button onclick="loadLog('supervisor')">守护脚本</button><button onclick="loadLog('tunnel')">Tunnel</button><button onclick="loadLog('tunnelSupervisor')">Tunnel 守护</button></div><pre id="log-box" class="logs">选择一个日志。</pre></section>
 
@@ -213,6 +233,14 @@ function renderConsolePage(config: ServerConfig): string {
         document.getElementById('connection-guide').innerHTML = dl({ 'GPT 名称':'AgentDesk', 'Server URL':'<code>'+s.public.mcpUrl+'</code>', '认证方式':'OAuth', '本机控制台':'<code>'+s.local.consoleUrl+'</code>', '公网状态页':'<code>'+s.public.statusUrl+'</code>' });
         document.getElementById('feature-list').innerHTML = dl({ '权限档位':s.features.permissionProfile, '浏览器模式':s.features.browserMode + ' / ' + s.features.browserDebugPort, '系统工具':s.features.systemTools ? '开启' : '关闭', '进程控制':s.features.processControl ? '开启' : '关闭', '插件':s.features.plugins ? '开启' : '关闭', 'Owner Token':s.oauth.ownerTokenFingerprint + ' / ' + s.oauth.ownerTokenStrength, '文件密码':s.fileBrowser.passwordFingerprint + ' / ' + s.fileBrowser.passwordStrength });
         document.getElementById('roots').innerHTML = s.paths.allowedRoots.map(r => '<a class="pill" href="/local-files?p='+encodeURIComponent(r)+'">'+r+'</a>').join('');
+        document.getElementById('allowed-roots-editor').value = s.paths.allowedRoots.join('\\n');
+      }
+      async function saveAllowedRoots(){
+        const value = document.getElementById('allowed-roots-editor').value;
+        const roots = value.split(/\\r?\\n|,/).map(x => x.trim()).filter(Boolean);
+        const r = await fetchJson('/console/api/allowed-roots', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ allowedRoots: roots }) });
+        setText('action-result', r.message + '\\n\\n当前可访问目录：\\n' + r.allowedRoots.join('\\n'));
+        await loadStatus();
       }
       async function rotateOwnerToken(){ const r = await fetchJson('/console/api/rotate-owner-token',{method:'POST'}); setText('action-result','新的 Owner Token：\\n'+r.token+'\\n\\n'+r.message); await loadStatus(); }
       async function rotateFilePassword(){ const r = await fetchJson('/console/api/rotate-file-browser-password',{method:'POST'}); setText('action-result','公网文件浏览器用户名：'+r.username+'\\n新密码：\\n'+r.password+'\\n\\n'+r.message); await loadStatus(); }
@@ -241,7 +269,7 @@ function renderPublicStatusPage(config: ServerConfig): string {
 function layout(title: string, body: string): string {
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escapeHtml(title)}</title><style>
   :root{color-scheme:light dark;--bg:#f6f7fb;--card:#fff;--text:#141824;--muted:#667085;--line:#e5e7eb;--brand:#155eef;--danger:#b42318;--soft:#eef4ff} @media(prefers-color-scheme:dark){:root{--bg:#0b1020;--card:#121a2b;--text:#eef2ff;--muted:#9aa4b2;--line:#273246;--soft:#14213d}}
-  *{box-sizing:border-box}body{margin:0;padding:28px;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}a{color:var(--brand)}.hero{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:22px;padding:22px;border-radius:20px;background:linear-gradient(135deg,var(--card),var(--soft));border:1px solid var(--line)}.eyebrow{color:var(--brand);font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase}h1{margin:.2em 0;font-size:30px}h2{margin:0 0 14px;font-size:18px}p{color:var(--muted)}.grid{display:grid;gap:14px}.cards{grid-template-columns:repeat(4,minmax(0,1fr))}.two{grid-template-columns:1fr 1fr}.card,.panel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(15,23,42,.05)}.label{display:block;color:var(--muted);font-size:13px;margin-bottom:8px}.card strong{display:block;font-size:24px}.card small,dd{color:var(--muted)}code,pre{background:rgba(127,127,127,.12);border-radius:8px;padding:3px 6px;word-break:break-all}.button,button{border:0;border-radius:10px;background:var(--brand);color:white;padding:9px 12px;text-decoration:none;cursor:pointer;font-weight:650}.button.secondary,button.secondary{background:rgba(127,127,127,.18);color:var(--text)}button.danger{background:var(--danger)}.hero-actions,.actions{display:flex;gap:8px;flex-wrap:wrap}.panel{margin-top:14px}.result,.logs{white-space:pre-wrap;max-height:360px;overflow:auto;padding:12px}dl{display:grid;grid-template-columns:130px 1fr;gap:8px 12px}dt{color:var(--muted)}dd{margin:0}.pill{display:inline-block;margin:4px;padding:7px 10px;background:var(--soft);border:1px solid var(--line);border-radius:999px;text-decoration:none}@media(max-width:900px){.cards,.two{grid-template-columns:1fr}.hero{display:block}.hero-actions{margin-top:12px}}
+  *{box-sizing:border-box}body{margin:0;padding:28px;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}a{color:var(--brand)}.hero{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:22px;padding:22px;border-radius:20px;background:linear-gradient(135deg,var(--card),var(--soft));border:1px solid var(--line)}.eyebrow{color:var(--brand);font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase}h1{margin:.2em 0;font-size:30px}h2{margin:0 0 14px;font-size:18px}p{color:var(--muted)}.grid{display:grid;gap:14px}.cards{grid-template-columns:repeat(4,minmax(0,1fr))}.two{grid-template-columns:1fr 1fr}.card,.panel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(15,23,42,.05)}.label{display:block;color:var(--muted);font-size:13px;margin-bottom:8px}.card strong{display:block;font-size:24px}.card small,dd{color:var(--muted)}code,pre{background:rgba(127,127,127,.12);border-radius:8px;padding:3px 6px;word-break:break-all}.button,button{border:0;border-radius:10px;background:var(--brand);color:white;padding:9px 12px;text-decoration:none;cursor:pointer;font-weight:650}.button.secondary,button.secondary{background:rgba(127,127,127,.18);color:var(--text)}button.danger{background:var(--danger)}.hero-actions,.actions{display:flex;gap:8px;flex-wrap:wrap}.panel{margin-top:14px}.result,.logs{white-space:pre-wrap;max-height:360px;overflow:auto;padding:12px}.editor{width:100%;min-height:130px;margin:10px 0;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text);font:14px ui-monospace,SFMono-Regular,Consolas,monospace;line-height:1.5}dl{display:grid;grid-template-columns:130px 1fr;gap:8px 12px}dt{color:var(--muted)}dd{margin:0}.pill{display:inline-block;margin:4px;padding:7px 10px;background:var(--soft);border:1px solid var(--line);border-radius:999px;text-decoration:none}@media(max-width:900px){.cards,.two{grid-template-columns:1fr}.hero{display:block}.hero-actions{margin-top:12px}}
   </style></head><body>${body}</body></html>`;
 }
 
@@ -260,6 +288,51 @@ function newOwnerToken(): string {
 
 function newFileBrowserToken(): string {
   return "adsk-files-" + randomBytes(32).toString("base64url");
+}
+
+async function readRequestJson(req: Request): Promise<any> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  const raw = Buffer.concat(chunks).toString("utf8").trim();
+  if (!raw) return {};
+  return JSON.parse(raw);
+}
+
+async function normalizeAllowedRootsInput(value: unknown): Promise<string[]> {
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/\r?\n|,/)
+      : [];
+  const candidates = Array.from(new Set(raw.map((entry) => String(entry).trim()).filter(Boolean)));
+  if (!candidates.length) throw new Error("至少需要保留一个可访问目录。");
+  if (candidates.length > 20) throw new Error("可访问目录最多 20 个。请只添加真正需要的目录。");
+
+  const roots: string[] = [];
+  for (const candidate of candidates) {
+    const resolved = resolve(candidate);
+    const info = await stat(resolved).catch(() => undefined);
+    if (!info) throw new Error(`目录不存在：${candidate}`);
+    if (!info.isDirectory()) throw new Error(`不是目录：${candidate}`);
+    roots.push(await realpath(resolved));
+  }
+  return roots;
+}
+
+async function updateSetupFile(config: ServerConfig, patch: Record<string, unknown>): Promise<void> {
+  const filePath = setupFilePath(config);
+  let current: Record<string, unknown> = {};
+  try {
+    const raw = await readFile(filePath, "utf8");
+    current = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    current = {};
+  }
+  await writeJsonNoBom(filePath, { ...current, ...patch });
+}
+
+function setupFilePath(config: ServerConfig): string {
+  return resolve(dirname(config.stateDir), "setup.json");
 }
 
 function tokenStrength(token: string): "weak" | "medium" | "strong" {
